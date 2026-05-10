@@ -1,0 +1,146 @@
+ID,Phase,Category,Task,Description,Dependencies,Priority,Type,Module/File,Acceptance Criteria
+P0-001,0,Infrastructure,Project scaffold,Create rebar3 umbrella project with apps/cli_proxy and apps/clips_port directories,-,P0,impl,rebar.config,"rebar3 compile passes, directory structure matches DESIGN.md"
+P0-002,0,Infrastructure,Dependencies,Add deps: cowboy jiffy gun hackney proper recon fs,-,P0,impl,rebar.config,All deps resolve and compile
+P0-003,0,Infrastructure,Config records,Define config_types.hrl with all record definitions from Configuration section,P0-001,P0,impl,src/config/config_types.hrl,Records match DESIGN.md Configuration section
+P0-004,0,Infrastructure,Test fixtures,Create test/fixtures/ directory with sentinel JSONs and sample request/response payloads,P0-001,P0,impl,test/fixtures/,All fixture files present per DESIGN.md test fixtures structure
+P0-005,0,Infrastructure,CI pipeline,Create GitHub Actions workflow with compile/eunit/ct/proper/cover/dialyzer steps,P0-001,P0,impl,.github/workflows/test.yml,CI green on empty project
+P0-006,0,Infrastructure,Docker build,Create multi-stage Dockerfile (erlang:27-alpine builder + alpine runtime),P0-001,P2,impl,Dockerfile,docker build completes successfully
+P0-007,0,Infrastructure,vm.args,Create vm.args with scheduler/process/port limits per DESIGN.md,P0-001,P2,impl,config/vm.args,Release starts with correct VM params
+P1-001,1,CLIPS Port,CLIPS C bridge,Implement clips_bridge.c wrapping CLIPS 6.4 API (CreateEnvironment/Assert/Run/etc),-,P0,impl,apps/clips_port/src/clips_bridge.c,Compiles and links against CLIPS library
+P1-002,1,CLIPS Port,Port protocol,Implement main.c with stdin/stdout line-delimited JSON protocol,P1-001,P0,impl,apps/clips_port/src/main.c,"Accepts {op:assert/run/retract/query} JSON, returns results"
+P1-003,1,CLIPS Port,Port Makefile,Create Makefile to compile CLIPS port binary,P1-001,P0,impl,apps/clips_port/Makefile,make produces clips_port binary
+P1-004,1,CLIPS Port,clips_engine gen_server,Implement clips_engine.erl wrapping Port with gen_server,P1-002,P0,impl,src/conductor/clips_engine.erl,"assert/retract/run/query/reset work through Port, crash restarts"
+P1-005,1,CLIPS Port,clips_engine tests,Unit tests for clips_engine assert/retract/run/query lifecycle,P1-004,P0,test,test/clips_engine_tests.erl,All basic ops pass
+T1-001,1,Tests Phase 1,CLIPS fact templates,Write templates.clp with all deftemplate from DESIGN.md,P1-004,P0,impl,priv/clips/templates.clp,All 10 templates load without error
+T1-002,1,Tests Phase 1,Selection rules,Write selection.clp with exclusion/scoring/affinity/final-select rules,T1-001,P0,impl,priv/clips/selection.clp,Rules parse and load
+T1-003,1,Tests Phase 1,Cooldown rules,Write cooldown.clp with mark-success/mark-rate-limited/mark-unauthorized,T1-001,P0,impl,priv/clips/cooldown.clp,Rules parse and load
+T1-004,1,Tests Phase 1,Thinking rules,Write thinking.clp with clamp/convert/emit rules,T1-001,P0,impl,priv/clips/thinking.clp,Rules parse and load
+T1-005,1,Tests Phase 1,Quota rules,Write quota.clp with quota-exceeded-switch-project rule,T1-001,P1,impl,priv/clips/quota.clp,Rules parse and load
+T1-006,1,Tests Phase 1,Selection test: fill-first,Test fill_first_deterministic and priority_fallback_cooldown,T1-002,P0,test,test/clips_selection_tests.erl,2 cases pass
+T1-007,1,Tests Phase 1,Selection test: round-robin,Test round_robin_cycles and priority_buckets,T1-002,P0,test,test/clips_selection_tests.erl,2 cases pass
+T1-008,1,Tests Phase 1,Selection test: session affinity,Test session_affinity_prefers_bound_credential,T1-002,P0,test,test/clips_selection_tests.erl,1 case passes
+T1-009,1,Tests Phase 1,Selection test: exclusions,Test exclude_disabled/exclude_no_websocket/all_cooldown_returns_error,T1-002,P0,test,test/clips_selection_tests.erl,3 cases pass
+T1-010,1,Tests Phase 1,Cooldown test: mark_success,Test mark_success_clears_cooldown,T1-003,P0,test,test/clips_cooldown_tests.erl,1 case passes
+T1-011,1,Tests Phase 1,Cooldown test: backoff,Test mark_429_exponential_backoff,T1-003,P0,test,test/clips_cooldown_tests.erl,1 case passes
+T1-012,1,Tests Phase 1,Cooldown test: auth hold,Test mark_401_30min_hold,T1-003,P0,test,test/clips_cooldown_tests.erl,1 case passes
+T1-013,1,Tests Phase 1,Thinking test: model defs,Create thinking_test_models.erl with 10 model definitions,T1-004,P0,test,test/thinking_test_models.erl,Module compiles with correct specs
+T1-014,1,Tests Phase 1,Thinking test: suffix matrix,Port 57 suffix-based thinking conversion cases,T1-013,P0,test,test/thinking_conversion_tests.erl,57 cases pass
+T1-015,1,Tests Phase 1,Thinking test: body matrix,Port 38 body-parameter thinking conversion cases,T1-013,P0,test,test/thinking_conversion_tests.erl,38 cases pass (total 95)
+T2-001,2,Tests Phase 2,Translator behaviour,Define translator.erl behaviour with request/response_stream/response_nonstream/init_acc callbacks,P0-001,P0,impl,src/translator/translator.erl,Behaviour compiles
+T2-002,2,Tests Phase 2,Translator registry,Implement translator_registry.erl with ETS-backed register/get,T2-001,P0,impl,src/translator/translator_registry.erl,"register/get work, concurrent reads safe"
+T2-003,2,Tests Phase 2,Test: OpenAI→Claude request,Port basic_messages/tool_calls/image_url_to_base64 tests,T2-001,P0,test,test/translator_openai_claude_tests.erl,3 cases pass
+T2-004,2,Tests Phase 2,Test: Claude→OpenAI streaming,Port streaming_text_delta/tool_call_accumulation tests,T2-001,P0,test,test/translator_claude_openai_tests.erl,2 cases pass
+T2-005,2,Tests Phase 2,Test: Claude→OpenAI nonstream,Port nonstream_full_response test,T2-001,P0,test,test/translator_claude_openai_tests.erl,1 case passes
+T2-006,2,Tests Phase 2,Test: builtin tools,Port openai_to_codex_preserves_web_search and responses_strips_builtin tests,T2-001,P0,test,test/builtin_tools_tests.erl,2 cases pass
+T2-007,2,Tests Phase 2,Test: Claude Code sentinels,Port 4 sentinel shape tests with fixture files,P0-004,P0,test,test/claude_code_compat_tests.erl,4 cases pass
+T2-008,2,Tests Phase 2,Test: OpenAI→Gemini request,Port request translation with safety settings,T2-001,P1,test,test/translator_openai_gemini_tests.erl,Cases pass
+T2-009,2,Tests Phase 2,Test: Gemini→Claude request,Port request translation with function calls,T2-001,P1,test,test/translator_gemini_claude_tests.erl,Cases pass
+T2-010,2,Tests Phase 2,Test: Codex→Claude request,Port request translation for Codex format,T2-001,P1,test,test/translator_codex_claude_tests.erl,Cases pass
+T2-011,2,Tests Phase 2,Test: Antigravity→Claude,Port request+signature validation tests,T2-001,P1,test,test/translator_antigravity_claude_tests.erl,Cases pass
+T2-012,2,Tests Phase 2,Test: Responses API translation,Port openai_responses→claude request/response tests,T2-001,P0,test,test/translator_responses_tests.erl,Cases pass
+T2-013,2,Tests Phase 2,Test: PropEr roundtrip,Implement roundtrip_preserves_content property test,T2-001,P1,test,test/translator_properties.erl,Property holds for 1000 iterations
+T2-014,2,Tests Phase 2,Test: PropEr usage,Implement usage_non_negative property test,T2-001,P1,test,test/translator_properties.erl,Property holds
+T2-015,2,Tests Phase 2,Test: PropEr thinking,Implement thinking_clamped property test,T1-013,P1,test,test/translator_properties.erl,Property holds
+T3-001,3,Tests Phase 3,Test: credential_proc states,Port ready/cooldown/disabled/thinking_suffix_shares tests,P0-001,P0,test,test/credential_proc_tests.erl,5 cases pass
+T3-002,3,Tests Phase 3,Test: credential_proc refresh,Test refreshing state transitions and backoff,P0-001,P0,test,test/credential_proc_tests.erl,3 cases pass
+T3-003,3,Tests Phase 3,Test: conductor retry,Test retry_on_502 with mock upstream,P0-001,P1,test,test/conductor_tests.erl,Case passes
+T3-004,3,Tests Phase 3,Test: conductor credential rotation,Test that failed credentials are excluded on retry,P0-001,P1,test,test/conductor_tests.erl,Case passes
+I1-001,4,Implementation,translator_openai_claude,Implement full OpenAI→Claude request+response translator,"T2-003,T2-004,T2-005",P0,impl,src/translator/translator_openai_claude.erl,All Phase 2 OpenAI→Claude tests pass
+I1-002,4,Implementation,translator_claude_openai,Implement full Claude→OpenAI request+response translator,"T2-004,T2-005",P0,impl,src/translator/translator_claude_openai.erl,All streaming+nonstream tests pass
+I1-003,4,Implementation,translator_openai_gemini,Implement OpenAI→Gemini request+response,T2-008,P1,impl,src/translator/translator_openai_gemini.erl,Tests pass
+I1-004,4,Implementation,translator_gemini_claude,Implement Gemini→Claude request+response,T2-009,P1,impl,src/translator/translator_gemini_claude.erl,Tests pass
+I1-005,4,Implementation,translator_codex_claude,Implement Codex→Claude request+response,T2-010,P1,impl,src/translator/translator_codex_claude.erl,Tests pass
+I1-006,4,Implementation,translator_antigravity_claude,Implement Antigravity→Claude with signature validation,T2-011,P1,impl,src/translator/translator_antigravity_claude.erl,Tests pass
+I1-007,4,Implementation,translator_openai_responses_claude,Implement Responses API→Claude translator,T2-012,P0,impl,src/translator/translator_openai_responses_claude.erl,Tests pass
+I1-008,4,Implementation,All remaining translators,Implement remaining ~20 translator pair modules,"I1-001,I1-002,I1-003,I1-004",P1,impl,src/translator/*.erl,Full 28-pair matrix covered
+I1-009,4,Implementation,thinking module,Implement thinking:parse_suffix/apply/clamp_budget,"T1-014,T1-015",P0,impl,src/conductor/thinking.erl,All 95 thinking tests pass
+I2-001,5,Implementation,credential_proc gen_statem,Implement 4-state credential process (ready/refreshing/cooldown/disabled),"T3-001,T3-002",P0,impl,src/conductor/credential_proc.erl,All credential_proc tests pass
+I2-002,5,Implementation,credential_sup,Implement simple_one_for_one supervisor for credential processes,I2-001,P0,impl,src/conductor/credential_sup.erl,Dynamic child start/stop works
+I2-003,5,Implementation,conductor gen_server,Implement conductor with CLIPS selection + retry loop,"I2-001,I1-009",P0,impl,src/conductor/conductor.erl,"select_credential/execute_with_retry work, conductor tests pass"
+I2-004,5,Implementation,config_loader,Implement ETS-backed config access (get/apply/update_api_keys),P0-003,P0,impl,src/config/config_loader.erl,Config reads from ETS at O(1)
+I2-005,5,Implementation,config_watcher,Implement fs:subscribe + hash compare + rest_for_one restart,I2-004,P1,impl,src/config/config_watcher.erl,File changes trigger config reload
+I2-006,5,Implementation,model_registry,Implement gen_server + ETS model registry with CLIPS integration,I2-003,P1,impl,src/registry/model_registry.erl,Register/unregister/query models works
+I2-007,5,Implementation,model_updater,Implement periodic remote model catalog fetch,I2-006,P2,impl,src/registry/model_updater.erl,Loads embedded models.json on startup
+I3-001,6,Implementation,claude_executor,Implement Claude provider executor gen_server,I2-003,P0,impl,src/executor/claude_executor.erl,Execute request against mock upstream
+I3-002,6,Implementation,codex_executor,Implement Codex REST executor,I2-003,P0,impl,src/executor/codex_executor.erl,Execute works
+I3-003,6,Implementation,codex_ws_executor,Implement Codex WebSocket executor with connection pooling,I2-003,P0,impl,src/executor/codex_ws_executor.erl,WS connect/send/receive works
+I3-004,6,Implementation,gemini_executor,Implement Gemini API executor,I2-003,P1,impl,src/executor/gemini_executor.erl,Execute works
+I3-005,6,Implementation,gemini_cli_executor,Implement Gemini CLI executor,I2-003,P1,impl,src/executor/gemini_cli_executor.erl,Execute works
+I3-006,6,Implementation,vertex_executor,Implement Vertex AI executor with service account auth,I2-003,P1,impl,src/executor/vertex_executor.erl,Execute works
+I3-007,6,Implementation,antigravity_executor,Implement Antigravity executor with credits,I2-003,P1,impl,src/executor/antigravity_executor.erl,Execute works
+I3-008,6,Implementation,kimi_executor,Implement Kimi executor,I2-003,P2,impl,src/executor/kimi_executor.erl,Execute works
+I3-009,6,Implementation,openai_compat_executor,Implement OpenAI-compatible executor,I2-003,P1,impl,src/executor/openai_compat_executor.erl,Execute works
+I3-010,6,Implementation,aistudio_executor,Implement AI Studio WebSocket runtime executor,I2-003,P2,impl,src/executor/aistudio_executor.erl,WS credential registration works
+I4-001,7,Implementation,Cowboy routes,Register all routes per DESIGN.md (v1/ v1beta/ backend-api/),I2-003,P0,impl,src/cli_proxy_app.erl,All routes respond (404 for unimpl)
+I4-002,7,Implementation,access_control,Implement API key validation with ETS lookup,I2-004,P0,impl,src/access/access_control.erl,Valid key passes; invalid returns 401
+I4-003,7,Implementation,openai_handler,Implement /v1/chat/completions POST handler (stream + nonstream),"I4-001,I1-001,I3-001",P0,impl,src/http/openai_handler.erl,Full request→translate→execute→translate→respond cycle
+I4-004,7,Implementation,claude_handler,Implement /v1/messages POST handler,"I4-001,I3-001",P0,impl,src/http/claude_handler.erl,Claude-native requests work
+I4-005,7,Implementation,gemini_handler,Implement /v1beta/models/*action handler,"I4-001,I3-004",P1,impl,src/http/gemini_handler.erl,Gemini-native requests work
+I4-006,7,Implementation,models_handler,Implement GET /v1/models with format conversion per client type,I2-006,P1,impl,src/http/models_handler.erl,Returns model list in correct format
+I4-007,7,Implementation,health_handler,Implement /healthz endpoint,I4-001,P0,impl,src/http/health_handler.erl,Returns 200 ok
+I4-008,7,Implementation,SSE streaming,Implement SSE response formatting (data: prefix + newlines),I4-003,P0,impl,src/util/sse_parser.erl,Correct SSE format output
+I4-009,7,Implementation,stream_keepalive,Implement keepalive process (30s interval),I4-008,P1,impl,src/util/stream_keepalive.erl,Keepalive sent during long streams
+I5-001,8,Implementation,responses_ws_handler,Implement Responses API WebSocket handler (cowboy_websocket),"I4-001,I3-003",P0,impl,src/http/responses_ws_handler.erl,WS upgrade + response.create works
+I5-002,8,Implementation,responses_upstream,Implement linked upstream WS connection process,I5-001,P0,impl,src/http/responses_upstream.erl,Connect to upstream WS and stream events
+I5-003,8,Implementation,Tool cache (ETS),Implement per-session tool call/output caches with repair,I5-001,P0,impl,src/http/responses_ws_handler.erl,Orphaned tool outputs repaired
+I5-004,8,Implementation,Credential pinning,Implement pinning + unpin on 401/402/403/429,I5-001,P0,impl,src/http/responses_ws_handler.erl,Pin/unpin logic correct
+I5-005,8,Implementation,Incremental input,Implement previous_response_id detection and delta-only mode,I5-001,P1,impl,src/http/responses_ws_handler.erl,Incremental mode for Codex WS auths
+I5-006,8,Implementation,responses_handler (HTTP),Implement POST /v1/responses (non-WS streaming),I4-003,P0,impl,src/http/responses_handler.erl,HTTP streaming responses work
+I5-007,8,Implementation,responses_compact_handler,Implement POST /v1/responses/compact,I5-006,P1,impl,src/http/responses_compact_handler.erl,Single JSON response returned
+I5-008,8,Implementation,codex_direct_handler,Implement /backend-api/codex/* route aliases,I5-001,P1,impl,src/http/codex_direct_handler.erl,Codex CLI direct routes work
+T5-001,8,Tests Phase 6,WS protocol tests,Port sequence_numbering/tool_cache_repair/credential_unpin tests,I5-001,P0,test,test/responses_ws_protocol_tests.erl,All WS protocol tests pass
+T5-002,8,Tests Phase 6,WS integration test,Implement full responses_api_websocket Common Test case,"I5-001,I5-002",P0,test,test/proxy_integration_SUITE.erl,WS roundtrip passes
+I6-001,9,Implementation,oauth_session gen_statem,Implement OAuth session state machine (idle→awaiting→exchanging→done),P0-001,P0,impl,src/oauth/oauth_session.erl,State transitions work
+I6-002,9,Implementation,oauth_session_registry,Implement state token → pid registry,I6-001,P0,impl,src/oauth/oauth_session_registry.erl,Lookup by state token works
+I6-003,9,Implementation,oauth_callback_handler,Implement Cowboy handler for /*/callback routes,I6-001,P0,impl,src/http/oauth_callback_handler.erl,Callback delivers code to waiting session
+I6-004,9,Implementation,oauth_claude,Implement Claude PKCE flow (auth_url/exchange/refresh),I6-001,P0,impl,src/oauth/oauth_claude.erl,Full OAuth flow produces tokens
+I6-005,9,Implementation,oauth_codex,Implement Codex PKCE + device code flow,I6-001,P0,impl,src/oauth/oauth_codex.erl,Both flows work
+I6-006,9,Implementation,oauth_gemini,Implement Google OAuth2 flow,I6-001,P1,impl,src/oauth/oauth_gemini.erl,Token exchange works
+I6-007,9,Implementation,oauth_antigravity,Implement Antigravity OAuth flow,I6-001,P1,impl,src/oauth/oauth_antigravity.erl,Token exchange works
+I6-008,9,Implementation,oauth_kimi,Implement Kimi device code flow,I6-001,P2,impl,src/oauth/oauth_kimi.erl,Device poll flow works
+I6-009,9,Implementation,vertex_import,Implement Vertex service account import,P0-001,P1,impl,src/oauth/vertex_import.erl,JSON key parsed and stored
+I6-010,9,Implementation,browser util,Implement cross-platform browser opener,P0-001,P2,impl,src/util/browser.erl,Opens URL on macOS/Linux
+I7-001,10,Implementation,management_handler,Implement management dispatch with auth middleware,I4-002,P1,impl,src/http/management_handler.erl,Routes dispatch correctly
+I7-002,10,Implementation,management auth,Implement bcrypt + rate limiting + IP-based access,I7-001,P1,impl,src/http/management_handler.erl,"Local/remote auth works, rate limiting active"
+I7-003,10,Implementation,Config CRUD endpoints,Implement GET/PUT/PATCH /config and /config.yaml,I7-001,P1,impl,src/http/management_handler.erl,Config read/write persists
+I7-004,10,Implementation,Auth files endpoints,Implement auth-files list/upload/download/delete/status/fields,I7-001,P1,impl,src/http/management_handler.erl,Full auth file CRUD works
+I7-005,10,Implementation,OAuth trigger endpoints,Implement GET /*-auth-url and POST /oauth-callback,I7-001,P1,impl,src/http/management_handler.erl,OAuth flows triggerable via API
+I7-006,10,Implementation,API keys endpoints,Implement api-keys CRUD + usage tracking,I7-001,P1,impl,src/http/management_handler.erl,Key management works
+I7-007,10,Implementation,Routing config endpoints,Implement routing/strategy and oauth-excluded-models,I7-001,P1,impl,src/http/management_handler.erl,Strategy switch works
+I7-008,10,Implementation,Logging endpoints,Implement debug/logging-to-file/request-log/logs,I7-001,P2,impl,src/http/management_handler.erl,Log toggle and retrieval works
+I7-009,10,Implementation,Provider keys endpoints,Implement gemini/claude/codex/openai-compat/vertex key CRUD,I7-001,P2,impl,src/http/management_handler.erl,All provider keys manageable
+T7-001,10,Tests Phase 7,Management API tests,Implement Common Test suite for management CRUD,"I7-001,I7-003",P1,test,test/management_api_tests.erl,"config/auth/routing/amp tests pass"
+I8-001,11,Implementation,auth_store behaviour,Define auth_store behaviour with load_all/save/update/delete,P0-001,P0,impl,src/store/auth_store.erl,Behaviour compiles
+I8-002,11,Implementation,file_store,Implement file system storage backend,I8-001,P0,impl,src/store/file_store.erl,Load/save auth files from disk
+I8-003,11,Implementation,pg_store,Implement PostgreSQL storage backend,I8-001,P2,impl,src/store/pg_store.erl,Config + auth stored in PG
+I8-004,11,Implementation,git_store,Implement Git-based token storage,I8-001,P3,impl,src/store/git_store.erl,Auto-commit on changes
+I8-005,11,Implementation,s3_store,Implement S3-compatible object store,I8-001,P3,impl,src/store/s3_store.erl,Upload/download auth files
+I9-001,12,Implementation,home_client,Implement satellite-side home_client gen_server with Erlang distribution,I2-003,P1,impl,src/home/home_client.erl,"net_adm:ping, monitor_nodes, rpc:call work"
+I9-002,12,Implementation,home_config,Implement home-side config broadcaster,I9-001,P1,impl,src/home/home_config.erl,Config pushes reach satellites
+I9-003,12,Implementation,Config overlay,Implement apply_config_overlay (preserve local network settings),I9-001,P1,impl,src/home/home_client.erl,Overlay merge correct per DESIGN.md rules
+I9-004,12,Implementation,Usage forwarding,Implement buffered usage forwarding to home node,"I9-001,I8-001",P2,impl,src/home/home_client.erl,Usage batched and forwarded
+I10-001,13,Implementation,amp_config,Implement hot-reloadable Amp config gen_server,I2-004,P2,impl,src/amp/amp_config.erl,Config reloads on change
+I10-002,13,Implementation,amp_model_mapper,Implement regex model mapping resolution,I10-001,P2,impl,src/amp/amp_model_mapper.erl,Exact and regex matches work
+I10-003,13,Implementation,amp_secret,Implement multi-tier secret resolution (config→env→file),I10-001,P2,impl,src/amp/amp_secret.erl,3-tier fallback works
+I10-004,13,Implementation,amp_handler,Implement Amp routing handler with model resolution priority,I10-002,P2,impl,src/http/amp_handler.erl,Local/mapped/upstream routing decisions correct
+I10-005,13,Implementation,Response rewriting,Implement model name rewrite in mapped responses,I10-004,P2,impl,src/http/amp_handler.erl,Client sees original requested model name
+I11-001,14,Implementation,signature_cache,Implement ETS-based signature cache with TTL sweep,P0-001,P1,impl,src/cache/signature_cache.erl,"Cache/get/clear work, expired entries removed"
+I11-002,14,Implementation,payload_rules,Implement pure function payload rules (default/override/filter),P0-001,P1,impl,src/rules/payload_rules.erl,Wildcard matching + JSON path set/remove works
+I11-003,14,Implementation,request_logger,Implement async request logging gen_server,P0-001,P2,impl,src/logging/request_logger.erl,Logs written asynchronously with rotation
+I11-004,14,Implementation,log_rotator,Implement size-based log rotation,I11-003,P2,impl,src/logging/log_rotator.erl,Files rotated when max size exceeded
+I11-005,14,Implementation,usage_logger,Implement usage statistics gen_server with ETS counters,P0-001,P2,impl,src/logging/usage_logger.erl,Per-credential usage tracked
+I11-006,14,Implementation,image_handler,Implement /v1/images/generations and /v1/images/edits,I4-001,P2,impl,src/http/image_handler.erl,Image generation routes work (or blocked if disabled)
+I12-001,15,Implementation,Supervision tree,Wire full supervision tree: root_sup → http_sup + provider_sup + config_sup,"I2-003,I4-001",P0,impl,src/cli_proxy_sup.erl,Application starts cleanly with all supervisors
+I12-002,15,Implementation,CLI argument parsing,Implement parse_cli_args for --login/--config/--password/etc,P0-001,P1,impl,src/cli_proxy_app.erl,All CLI flags parsed correctly
+I12-003,15,Implementation,Release packaging,Configure relx in rebar.config for production release,I12-001,P1,impl,rebar.config,rebar3 as prod release produces working binary
+I12-004,15,Implementation,docker-compose,Create docker-compose.yml with volume mounts and port exposure,P0-006,P2,impl,docker-compose.yml,docker compose up starts the service
+E2E-001,16,Integration,Full integration suite,Implement proxy_integration_SUITE with chat_completions_roundtrip/streaming/retry,"I4-003,I3-001",P0,test,test/proxy_integration_SUITE.erl,All integration cases pass
+E2E-002,16,Integration,Mock upstream server,Implement configurable mock_upstream.erl for all providers,P0-001,P0,test,test/mock_upstream.erl,Serves realistic responses for Claude/Gemini/Codex
+E2E-003,16,Integration,Streaming e2e,Test full SSE streaming through proxy with format translation,"I4-003,I4-008",P0,test,test/proxy_integration_SUITE.erl,Correct SSE chunks delivered to client
+E2E-004,16,Integration,WebSocket e2e,Test full Responses API WS protocol with response.create → events → [DONE],I5-001,P0,test,test/proxy_integration_SUITE.erl,WS roundtrip with all event types
+E2E-005,16,Integration,Retry e2e,Test 502→retry→success with credential rotation,I2-003,P1,test,test/proxy_integration_SUITE.erl,Retry uses different credential
+E2E-006,16,Integration,Thinking e2e,Test thinking suffix normalization end-to-end,I1-009,P1,test,test/proxy_integration_SUITE.erl,Budget/level correctly applied in upstream request
+E2E-007,16,Integration,Multi-provider e2e,Test request routed to correct provider based on model,I2-003,P1,test,test/proxy_integration_SUITE.erl,Claude model → Claude executor; Gemini model → Gemini executor
+E2E-008,16,Integration,Management e2e,Test management API config change affects live routing,"I7-001,I7-003",P2,test,test/proxy_integration_SUITE.erl,Hot config change takes effect
+E2E-009,16,Integration,Home mode e2e,Test distributed credential selection via Erlang distribution,I9-001,P2,test,test/proxy_integration_SUITE.erl,Satellite delegates to home node
+E2E-010,16,Integration,Coverage gate,Verify 80%+ overall test coverage,E2E-001,P0,test,-,rebar3 cover --min_coverage 80 passes
