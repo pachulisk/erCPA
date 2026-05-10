@@ -742,6 +742,1114 @@ The redesign maps each architectural concern to the paradigm best suited for it:
 
 The key insight: the current Go codebase's most complex component (the Auth Conductor at ~5000 lines) is a rule engine fighting to exist inside an imperative language. Making it an actual rule engine doesn't just reduce code — it makes the decision logic auditable, independently testable, and extensible without touching existing rules.
 
+## Testing Strategy (Tests First)
+
+The Erlang reimplementation follows strict TDD: **all tests from the Go codebase are ported and passing BEFORE implementation is considered complete.** The Go test suite contains 142 test files, ~500+ test functions, and 41,668 lines of test code. These are the acceptance criteria for functional equivalence.
+
+### Test framework
+
+| Layer | Framework | Purpose |
+|-------|-----------|---------|
+| Unit | EUnit | Pure function tests, module-level |
+| Integration | Common Test | Multi-process, stateful, HTTP |
+| Property | PropEr | Format translation invariants |
+| CLIPS rules | EUnit + clips_engine | Rule firing verification |
+
+### Test priority ordering
+
+Tests are implemented in dependency order — lower layers first:
+
+```
+Phase 1: CLIPS rules (credential selection, thinking, cooldown)
+Phase 2: Translators (format conversion correctness)
+Phase 3: Conductor & credential lifecycle (process coordination)
+Phase 4: Executors (HTTP integration)
+Phase 5: HTTP handlers (end-to-end)
+Phase 6: WebSocket (Responses API bidirectional)
+Phase 7: Management API, Home, Amp
+```
+
+### Phase 1: CLIPS Rule Tests
+
+The CLIPS rules are the system's decision core. Every rule must be testable in isolation.
+
+#### Credential selection tests (ported from `sdk/cliproxy/auth/selector_test.go`, 1455 lines)
+
+```erlang
+-module(clips_selection_tests).
+-include_lib("eunit/include/eunit.hrl").
+
+%% --- Fill-first strategy ---
+
+fill_first_deterministic_test() ->
+    %% Always picks alphabetically first active credential
+    clips_engine:reset(),
+    clips_engine:assert({credential, #{id => <<"a">>, provider => <<"claude">>,
+                                       status => active, priority => 0}}),
+    clips_engine:assert({credential, #{id => <<"b">>, provider => <<"claude">>,
+                                       status => active, priority => 0}}),
+    clips_engine:assert({credential, #{id => <<"c">>, provider => <<"claude">>,
+                                       status => active, priority => 0}}),
+    clips_engine:assert({select_request, #{id => <<"r1">>, model => <<"claude-3">>,
+                                           session_id => <<>>, now => now_ts()}}),
+    clips_engine:run(),
+    ?assertMatch({ok, #{credential_id := <<"a">>}},
+                 clips_engine:query(selection_result, <<"r1">>)).
+
+fill_first_priority_fallback_cooldown_test() ->
+    %% Falls back to lower priority when high-priority is in cooldown
+    clips_engine:reset(),
+    clips_engine:assert({credential, #{id => <<"high">>, provider => <<"claude">>,
+                                       status => cooldown, priority => 10,
+                                       cooldown_until => now_ts() + 3600}}),
+    clips_engine:assert({credential, #{id => <<"low">>, provider => <<"claude">>,
+                                       status => active, priority => 0}}),
+    clips_engine:assert({select_request, #{id => <<"r1">>, model => <<"claude-3">>,
+                                           session_id => <<>>, now => now_ts()}}),
+    clips_engine:run(),
+    ?assertMatch({ok, #{credential_id := <<"low">>}},
+                 clips_engine:query(selection_result, <<"r1">>)).
+
+%% --- Round-robin strategy ---
+
+round_robin_cycles_test() ->
+    %% Cycles through credentials: a→b→c→a→b
+    clips_engine:reset(),
+    [clips_engine:assert({credential, #{id => Id, provider => <<"claude">>,
+                                        status => active, priority => 0}})
+     || Id <- [<<"a">>, <<"b">>, <<"c">>]],
+    Results = [begin
+        clips_engine:assert({select_request, #{id => integer_to_binary(I),
+                                               model => <<"claude-3">>,
+                                               session_id => <<>>, now => now_ts()}}),
+        clips_engine:run(),
+        {ok, R} = clips_engine:query(selection_result, integer_to_binary(I)),
+        clips_engine:retract_transients(integer_to_binary(I)),
+        maps:get(credential_id, R)
+    end || I <- lists:seq(1, 5)],
+    ?assertEqual([<<"a">>, <<"b">>, <<"c">>, <<"a">>, <<"b">>], Results).
+
+%% --- Session affinity ---
+
+session_affinity_prefers_bound_credential_test() ->
+    clips_engine:reset(),
+    clips_engine:assert({credential, #{id => <<"c1">>, provider => <<"claude">>,
+                                       status => active, priority => 0}}),
+    clips_engine:assert({credential, #{id => <<"c2">>, provider => <<"claude">>,
+                                       status => active, priority => 10}}),
+    clips_engine:assert({session_binding, #{session_id => <<"sess1">>,
+                                            credential_id => <<"c1">>,
+                                            bound_at => now_ts() - 60,
+                                            ttl => 3600}}),
+    clips_engine:assert({select_request, #{id => <<"r1">>, model => <<"claude-3">>,
+                                           session_id => <<"sess1">>, now => now_ts()}}),
+    clips_engine:run(),
+    %% Should pick c1 (session-bound) despite c2 having higher priority
+    ?assertMatch({ok, #{credential_id := <<"c1">>, reason := <<"session-affinity">>}},
+                 clips_engine:query(selection_result, <<"r1">>)).
+
+%% --- Exclusion rules ---
+
+exclude_disabled_test() ->
+    clips_engine:reset(),
+    clips_engine:assert({credential, #{id => <<"c1">>, provider => <<"claude">>,
+                                       status => disabled, priority => 10}}),
+    clips_engine:assert({credential, #{id => <<"c2">>, provider => <<"claude">>,
+                                       status => active, priority => 0}}),
+    clips_engine:assert({select_request, #{id => <<"r1">>, model => <<"claude-3">>,
+                                           session_id => <<>>, now => now_ts()}}),
+    clips_engine:run(),
+    ?assertMatch({ok, #{credential_id := <<"c2">>}},
+                 clips_engine:query(selection_result, <<"r1">>)).
+
+exclude_no_websocket_test() ->
+    clips_engine:reset(),
+    clips_engine:assert({credential, #{id => <<"c1">>, provider => <<"codex">>,
+                                       status => active, has_websocket => no}}),
+    clips_engine:assert({credential, #{id => <<"c2">>, provider => <<"codex">>,
+                                       status => active, has_websocket => yes}}),
+    clips_engine:assert({select_request, #{id => <<"r1">>, model => <<"gpt-4">>,
+                                           need_websocket => yes, now => now_ts()}}),
+    clips_engine:run(),
+    ?assertMatch({ok, #{credential_id := <<"c2">>}},
+                 clips_engine:query(selection_result, <<"r1">>)).
+
+all_cooldown_returns_error_test() ->
+    clips_engine:reset(),
+    clips_engine:assert({credential, #{id => <<"c1">>, provider => <<"claude">>,
+                                       status => cooldown, priority => 0,
+                                       cooldown_until => now_ts() + 600}}),
+    clips_engine:assert({select_request, #{id => <<"r1">>, model => <<"claude-3">>,
+                                           session_id => <<>>, now => now_ts()}}),
+    clips_engine:run(),
+    ?assertEqual(error, clips_engine:query(selection_result, <<"r1">>)).
+```
+
+#### Thinking normalization tests (ported from `test/thinking_conversion_test.go`, 2934 lines, 95 cases)
+
+The thinking test matrix is the largest single test in the Go codebase. It validates budget/level clamping, cross-format conversion, and model-specific constraints.
+
+**Test model definitions:**
+
+```erlang
+-module(thinking_test_models).
+
+models() ->
+    #{
+        <<"level-model">> => #{
+            thinking => #{levels => [<<"minimal">>, <<"low">>, <<"medium">>, <<"high">>],
+                          zero_allowed => false, dynamic_allowed => false}
+        },
+        <<"level-subset-model">> => #{
+            thinking => #{levels => [<<"low">>, <<"high">>],
+                          zero_allowed => false, dynamic_allowed => false}
+        },
+        <<"gemini-budget-model">> => #{
+            thinking => #{min => 128, max => 20000,
+                          zero_allowed => false, dynamic_allowed => true}
+        },
+        <<"gemini-mixed-model">> => #{
+            thinking => #{min => 128, max => 32768,
+                          levels => [<<"low">>, <<"high">>],
+                          zero_allowed => false, dynamic_allowed => true}
+        },
+        <<"claude-budget-model">> => #{
+            thinking => #{min => 1024, max => 128000,
+                          zero_allowed => true, dynamic_allowed => false}
+        },
+        <<"claude-sonnet-4-6-model">> => #{
+            thinking => #{min => 1024, max => 128000,
+                          levels => [<<"low">>, <<"medium">>, <<"high">>],
+                          zero_allowed => false, dynamic_allowed => false}
+        },
+        <<"claude-opus-4-6-model">> => #{
+            thinking => #{min => 1024, max => 128000,
+                          levels => [<<"low">>, <<"medium">>, <<"high">>, <<"max">>],
+                          zero_allowed => false, dynamic_allowed => false}
+        },
+        <<"antigravity-budget-model">> => #{
+            thinking => #{min => 128, max => 20000,
+                          zero_allowed => true, dynamic_allowed => true}
+        },
+        <<"no-thinking-model">> => #{thinking => undefined},
+        <<"user-defined-model">> => #{thinking => undefined, user_defined => true}
+    }.
+```
+
+**Test case table (complete 95-case matrix):**
+
+```erlang
+-module(thinking_conversion_tests).
+-include_lib("eunit/include/eunit.hrl").
+
+%% Each case: {From, To, Model, InputJSON, ExpectField, ExpectValue}
+%% ExpectValue = {integer, N} | {string, S} | {boolean, B} | absent | error
+
+thinking_matrix_test_() ->
+    Cases = [
+        %% === Suffix-based tests (model name encodes thinking) ===
+
+        %% Case 1: Level model, valid level suffix
+        {openai, claude, <<"level-model(high)">>,
+         #{<<"model">> => <<"level-model(high)">>, <<"messages">> => []},
+         <<"thinking.budget_tokens">>, absent,  %% Claude uses level, not budget
+         <<"reasoning_effort">>, {string, <<"high">>}},
+
+        %% Case 2: Level model, "none" → clamp to "minimal" (ZeroAllowed=false)
+        {openai, claude, <<"level-model(none)">>,
+         #{<<"model">> => <<"level-model(none)">>, <<"messages">> => []},
+         <<"reasoning_effort">>, {string, <<"minimal">>}},
+
+        %% Case 3: Level model, out-of-range → clamp to "high"
+        {openai, claude, <<"level-model(xhigh)">>,
+         #{<<"model">> => <<"level-model(xhigh)">>, <<"messages">> => []},
+         <<"reasoning_effort">>, {string, <<"high">>}},
+
+        %% Case 4: Budget model, numeric suffix
+        {openai, gemini, <<"gemini-budget-model(8192)">>,
+         #{<<"model">> => <<"gemini-budget-model(8192)">>, <<"messages">> => []},
+         <<"generationConfig.thinkingConfig.thinkingBudget">>, {integer, 8192}},
+
+        %% Case 5: Budget model, exceeds max → clamp to 20000
+        {openai, gemini, <<"gemini-budget-model(99999)">>,
+         #{<<"model">> => <<"gemini-budget-model(99999)">>, <<"messages">> => []},
+         <<"generationConfig.thinkingConfig.thinkingBudget">>, {integer, 20000}},
+
+        %% Case 6: Budget model, below min → clamp to 128
+        {openai, gemini, <<"gemini-budget-model(50)">>,
+         #{<<"model">> => <<"gemini-budget-model(50)">>, <<"messages">> => []},
+         <<"generationConfig.thinkingConfig.thinkingBudget">>, {integer, 128}},
+
+        %% Case 7: Budget model with ZeroAllowed=true, 0 stays 0
+        {openai, claude, <<"claude-budget-model(0)">>,
+         #{<<"model">> => <<"claude-budget-model(0)">>, <<"messages">> => []},
+         <<"thinking.budget_tokens">>, {integer, 0}},
+
+        %% Case 8: Budget model with ZeroAllowed=false, 0 → min
+        {openai, gemini, <<"gemini-budget-model(0)">>,
+         #{<<"model">> => <<"gemini-budget-model(0)">>, <<"messages">> => []},
+         <<"generationConfig.thinkingConfig.thinkingBudget">>, {integer, 128}},
+
+        %% Case 9: DynamicAllowed=true, -1 → -1 (provider decides)
+        {openai, gemini, <<"gemini-budget-model(-1)">>,
+         #{<<"model">> => <<"gemini-budget-model(-1)">>, <<"messages">> => []},
+         <<"generationConfig.thinkingConfig.thinkingBudget">>, {integer, -1}},
+
+        %% Case 10: DynamicAllowed=false, -1 → mid-range
+        {openai, claude, <<"claude-budget-model(-1)">>,
+         #{<<"model">> => <<"claude-budget-model(-1)">>, <<"messages">> => []},
+         <<"thinking.budget_tokens">>, {integer, 64512}},  %% (1024+128000)/2
+
+        %% Case 11: No-thinking model, suffix stripped silently
+        {openai, claude, <<"no-thinking-model(high)">>,
+         #{<<"model">> => <<"no-thinking-model(high)">>, <<"messages">> => []},
+         <<"thinking">>, absent},
+
+        %% Case 12: User-defined model, suffix → standard effort passthrough
+        {openai, claude, <<"user-defined-model(high)">>,
+         #{<<"model">> => <<"user-defined-model(high)">>, <<"messages">> => []},
+         <<"reasoning_effort">>, {string, <<"high">>}},
+
+        %% === Body parameter tests ===
+
+        %% Case 13: OpenAI reasoning_effort → Claude thinking
+        {openai, claude, <<"claude-sonnet-4-6-model">>,
+         #{<<"model">> => <<"claude-sonnet-4-6-model">>,
+           <<"messages">> => [], <<"reasoning_effort">> => <<"high">>},
+         <<"reasoning_effort">>, {string, <<"high">>}},
+
+        %% Case 14: OpenAI reasoning.effort (Codex format) → Gemini
+        {codex, gemini, <<"gemini-budget-model">>,
+         #{<<"model">> => <<"gemini-budget-model">>,
+           <<"input">> => [], <<"reasoning">> => #{<<"effort">> => <<"high">>}},
+         <<"generationConfig.thinkingConfig.thinkingBudget">>, {integer, 20000}},
+
+        %% Case 15: Claude thinking.budget_tokens → Gemini budget
+        {claude, gemini, <<"gemini-budget-model">>,
+         #{<<"model">> => <<"gemini-budget-model">>,
+           <<"messages">> => [],
+           <<"thinking">> => #{<<"type">> => <<"enabled">>, <<"budget_tokens">> => 5000}},
+         <<"generationConfig.thinkingConfig.thinkingBudget">>, {integer, 5000}},
+
+        %% Case 16: Gemini thinkingBudget → Claude budget_tokens
+        {gemini, claude, <<"claude-budget-model">>,
+         #{<<"model">> => <<"claude-budget-model">>,
+           <<"contents">> => [],
+           <<"generationConfig">> => #{<<"thinkingConfig">> =>
+               #{<<"thinkingBudget">> => 10000}}},
+         <<"thinking.budget_tokens">>, {integer, 10000}},
+
+        %% Case 17: Gemini thinkingLevel → Claude effort
+        {gemini, claude, <<"claude-sonnet-4-6-model">>,
+         #{<<"model">> => <<"claude-sonnet-4-6-model">>,
+           <<"contents">> => [],
+           <<"generationConfig">> => #{<<"thinkingConfig">> =>
+               #{<<"thinkingLevel">> => <<"THINKING_LEVEL_HIGH">>}}},
+         <<"reasoning_effort">>, {string, <<"high">>}},
+
+        %% Case 18: includeThoughts=true for Gemini when thinking enabled
+        {openai, gemini, <<"gemini-budget-model(8192)">>,
+         #{<<"model">> => <<"gemini-budget-model(8192)">>, <<"messages">> => []},
+         <<"generationConfig.thinkingConfig.includeThoughts">>, {boolean, true}},
+
+        %% Case 19: includeThoughts=false when budget=0 and ZeroAllowed
+        {openai, antigravity, <<"antigravity-budget-model(0)">>,
+         #{<<"model">> => <<"antigravity-budget-model(0)">>, <<"messages">> => []},
+         <<"request.generationConfig.thinkingConfig.includeThoughts">>, {boolean, false}},
+
+        %% Case 20: Level conversion: "high" → budget for budget-only models
+        {openai, gemini, <<"gemini-budget-model">>,
+         #{<<"model">> => <<"gemini-budget-model">>,
+           <<"messages">> => [], <<"reasoning_effort">> => <<"high">>},
+         <<"generationConfig.thinkingConfig.thinkingBudget">>, {integer, 20000}},
+
+        %% Case 21: Budget conversion: 5000 → level for level-only models
+        {gemini, claude, <<"level-model">>,
+         #{<<"model">> => <<"level-model">>, <<"contents">> => [],
+           <<"generationConfig">> => #{<<"thinkingConfig">> =>
+               #{<<"thinkingBudget">> => 5000}}},
+         <<"reasoning_effort">>, {string, <<"medium">>}},
+
+        %% ... (remaining 74 cases follow same pattern)
+        %% Full matrix covers all provider pairs × all model types × edge cases
+        placeholder_remaining_cases
+    ],
+    [build_test(C) || C <- Cases, C =/= placeholder_remaining_cases].
+
+build_test({From, To, Model, Input, Field, Expected}) ->
+    Name = io_lib:format("~s→~s ~s", [From, To, Model]),
+    {lists:flatten(Name), fun() ->
+        %% 1. Parse suffix from model name
+        {BaseModel, Suffix} = thinking:parse_suffix(Model),
+        %% 2. Register test model in registry
+        ModelInfo = maps:get(BaseModel, thinking_test_models:models()),
+        %% 3. Translate request
+        Translated = translator_registry:translate_request(From, To, Model, Input, true),
+        %% 4. Apply thinking normalization via CLIPS
+        Final = thinking:apply(Translated, BaseModel, Suffix, ModelInfo, From, To),
+        %% 5. Assert field value
+        case Expected of
+            absent ->
+                ?assertEqual(undefined, json_path:get(Final, Field));
+            {integer, N} ->
+                ?assertEqual(N, json_path:get(Final, Field));
+            {string, S} ->
+                ?assertEqual(S, json_path:get(Final, Field));
+            {boolean, B} ->
+                ?assertEqual(B, json_path:get(Final, Field));
+            error ->
+                ?assertMatch({error, _}, Final)
+        end
+    end};
+build_test({From, To, Model, Input, Field1, Expected1, Field2, Expected2}) ->
+    Name = io_lib:format("~s→~s ~s (2 fields)", [From, To, Model]),
+    {lists:flatten(Name), fun() ->
+        {BaseModel, Suffix} = thinking:parse_suffix(Model),
+        ModelInfo = maps:get(BaseModel, thinking_test_models:models()),
+        Translated = translator_registry:translate_request(From, To, Model, Input, true),
+        Final = thinking:apply(Translated, BaseModel, Suffix, ModelInfo, From, To),
+        assert_field(Final, Field1, Expected1),
+        assert_field(Final, Field2, Expected2)
+    end}.
+```
+
+#### MarkResult / cooldown state transition tests
+
+```erlang
+-module(clips_cooldown_tests).
+-include_lib("eunit/include/eunit.hrl").
+
+mark_success_clears_cooldown_test() ->
+    clips_engine:reset(),
+    clips_engine:assert({credential, #{id => <<"c1">>, provider => <<"claude">>,
+                                       status => active, priority => 0}}),
+    clips_engine:assert({model_state, #{credential_id => <<"c1">>,
+                                        model => <<"claude-3">>,
+                                        available => no,
+                                        cooldown_until => now_ts() + 600,
+                                        backoff_level => 2}}),
+    clips_engine:assert({result, #{credential_id => <<"c1">>,
+                                   model => <<"claude-3">>,
+                                   status_code => 200, now => now_ts()}}),
+    clips_engine:run(),
+    %% Model state should be cleared
+    ?assertMatch({ok, #{available := yes, backoff_level := 0}},
+                 clips_engine:query(model_state, <<"c1">>, <<"claude-3">>)).
+
+mark_429_exponential_backoff_test() ->
+    clips_engine:reset(),
+    clips_engine:assert({credential, #{id => <<"c1">>, provider => <<"claude">>,
+                                       status => active, priority => 0}}),
+    clips_engine:assert({model_state, #{credential_id => <<"c1">>,
+                                        model => <<"claude-3">>,
+                                        available => yes,
+                                        cooldown_until => 0,
+                                        backoff_level => 0}}),
+    Now = now_ts(),
+    clips_engine:assert({result, #{credential_id => <<"c1">>,
+                                   model => <<"claude-3">>,
+                                   status_code => 429, now => Now}}),
+    clips_engine:run(),
+    {ok, State} = clips_engine:query(model_state, <<"c1">>, <<"claude-3">>),
+    ?assertEqual(no, maps:get(available, State)),
+    ?assertEqual(1, maps:get(backoff_level, State)),
+    %% Cooldown = 2^0 * 1 = 1 second
+    ?assert(maps:get(cooldown_until, State) >= Now + 1).
+
+mark_401_30min_hold_test() ->
+    clips_engine:reset(),
+    clips_engine:assert({credential, #{id => <<"c1">>, provider => <<"claude">>,
+                                       status => active, priority => 0}}),
+    clips_engine:assert({model_state, #{credential_id => <<"c1">>,
+                                        model => <<"claude-3">>,
+                                        available => yes,
+                                        cooldown_until => 0,
+                                        backoff_level => 0}}),
+    Now = now_ts(),
+    clips_engine:assert({result, #{credential_id => <<"c1">>,
+                                   model => <<"claude-3">>,
+                                   status_code => 401, now => Now}}),
+    clips_engine:run(),
+    {ok, State} = clips_engine:query(model_state, <<"c1">>, <<"claude-3">>),
+    ?assertEqual(no, maps:get(available, State)),
+    %% 30-minute hold
+    ?assert(maps:get(cooldown_until, State) >= Now + 1800).
+```
+
+### Phase 2: Translator Tests
+
+#### Format conversion correctness (ported from 24+ translator test files)
+
+```erlang
+-module(translator_openai_claude_tests).
+-include_lib("eunit/include/eunit.hrl").
+
+%% --- Request translation ---
+
+basic_messages_test() ->
+    Input = #{
+        <<"model">> => <<"claude-3-sonnet">>,
+        <<"messages">> => [
+            #{<<"role">> => <<"system">>, <<"content">> => <<"You are helpful">>},
+            #{<<"role">> => <<"user">>, <<"content">> => <<"Hello">>}
+        ],
+        <<"max_tokens">> => 1024,
+        <<"stream">> => true
+    },
+    Result = translator_openai_claude:request(<<"claude-3-sonnet">>, Input, true),
+    %% System message extracted to top-level
+    ?assertEqual(<<"You are helpful">>, maps:get(<<"system">>, Result)),
+    %% Messages only contain user message
+    [Msg] = maps:get(<<"messages">>, Result),
+    ?assertEqual(<<"user">>, maps:get(<<"role">>, Msg)).
+
+tool_calls_translation_test() ->
+    Input = #{
+        <<"model">> => <<"claude-3">>,
+        <<"messages">> => [
+            #{<<"role">> => <<"assistant">>,
+              <<"tool_calls">> => [
+                  #{<<"id">> => <<"call_1">>,
+                    <<"type">> => <<"function">>,
+                    <<"function">> => #{
+                        <<"name">> => <<"search">>,
+                        <<"arguments">> => <<"{\"q\":\"test\"}">>
+                    }}
+              ]}
+        ]
+    },
+    Result = translator_openai_claude:request(<<"claude-3">>, Input, false),
+    [Msg] = maps:get(<<"messages">>, Result),
+    [Content] = maps:get(<<"content">>, Msg),
+    %% OpenAI tool_calls → Claude tool_use content block
+    ?assertEqual(<<"tool_use">>, maps:get(<<"type">>, Content)),
+    ?assertEqual(<<"call_1">>, maps:get(<<"id">>, Content)),
+    ?assertEqual(<<"search">>, maps:get(<<"name">>, Content)),
+    ?assertEqual(#{<<"q">> => <<"test">>}, maps:get(<<"input">>, Content)).
+
+image_url_to_base64_test() ->
+    Input = #{
+        <<"model">> => <<"claude-3">>,
+        <<"messages">> => [
+            #{<<"role">> => <<"user">>,
+              <<"content">> => [
+                  #{<<"type">> => <<"image_url">>,
+                    <<"image_url">> => #{
+                        <<"url">> => <<"data:image/jpeg;base64,/9j/4AAQ...">>
+                    }}
+              ]}
+        ]
+    },
+    Result = translator_openai_claude:request(<<"claude-3">>, Input, false),
+    [Msg] = maps:get(<<"messages">>, Result),
+    [Content] = maps:get(<<"content">>, Msg),
+    ?assertEqual(<<"image">>, maps:get(<<"type">>, Content)),
+    Source = maps:get(<<"source">>, Content),
+    ?assertEqual(<<"base64">>, maps:get(<<"type">>, Source)),
+    ?assertEqual(<<"image/jpeg">>, maps:get(<<"media_type">>, Source)).
+
+%% --- Response translation (streaming) ---
+
+streaming_text_delta_test() ->
+    Event = #{<<"type">> => <<"content_block_delta">>,
+              <<"index">> => 0,
+              <<"delta">> => #{<<"type">> => <<"text_delta">>,
+                              <<"text">> => <<"Hello">>}},
+    Acc0 = translator_claude_openai:init_acc(),
+    {Chunks, _Acc1} = translator_claude_openai:response_stream(Event, Acc0),
+    ?assertEqual(1, length(Chunks)),
+    [Chunk] = Chunks,
+    Decoded = jiffy:decode(Chunk, [return_maps]),
+    Delta = hd(maps:get(<<"choices">>, Decoded)),
+    ?assertEqual(<<"Hello">>, maps:get(<<"content">>,
+                                       maps:get(<<"delta">>, Delta))).
+
+streaming_tool_call_accumulation_test() ->
+    Events = [
+        #{<<"type">> => <<"content_block_start">>,
+          <<"index">> => 0,
+          <<"content_block">> => #{<<"type">> => <<"tool_use">>,
+                                   <<"id">> => <<"toolu_1">>,
+                                   <<"name">> => <<"search">>}},
+        #{<<"type">> => <<"content_block_delta">>,
+          <<"index">> => 0,
+          <<"delta">> => #{<<"type">> => <<"input_json_delta">>,
+                          <<"partial_json">> => <<"{\"q\":">>}},
+        #{<<"type">> => <<"content_block_delta">>,
+          <<"index">> => 0,
+          <<"delta">> => #{<<"type">> => <<"input_json_delta">>,
+                          <<"partial_json">> => <<"\"test\"}">>}},
+        #{<<"type">> => <<"content_block_stop">>, <<"index">> => 0}
+    ],
+    {AllChunks, _FinalAcc} = lists:foldl(fun(E, {Cs, Acc}) ->
+        {NewCs, NewAcc} = translator_claude_openai:response_stream(E, Acc),
+        {Cs ++ NewCs, NewAcc}
+    end, {[], translator_claude_openai:init_acc()}, Events),
+    %% Should produce tool call chunks
+    ?assert(length(AllChunks) >= 3).
+
+%% --- Non-streaming response ---
+
+nonstream_full_response_test() ->
+    ClaudeResp = #{
+        <<"id">> => <<"msg_123">>,
+        <<"type">> => <<"message">>,
+        <<"role">> => <<"assistant">>,
+        <<"content">> => [
+            #{<<"type">> => <<"text">>, <<"text">> => <<"Hello world">>}
+        ],
+        <<"stop_reason">> => <<"end_turn">>,
+        <<"usage">> => #{
+            <<"input_tokens">> => 10,
+            <<"output_tokens">> => 5
+        }
+    },
+    Result = translator_claude_openai:response_nonstream(ClaudeResp),
+    ?assertEqual(<<"chat.completion">>, maps:get(<<"object">>, Result)),
+    [Choice] = maps:get(<<"choices">>, Result),
+    ?assertEqual(<<"stop">>, maps:get(<<"finish_reason">>, Choice)),
+    Msg = maps:get(<<"message">>, Choice),
+    ?assertEqual(<<"Hello world">>, maps:get(<<"content">>, Msg)),
+    Usage = maps:get(<<"usage">>, Result),
+    ?assertEqual(10, maps:get(<<"prompt_tokens">>, Usage)),
+    ?assertEqual(5, maps:get(<<"completion_tokens">>, Usage)).
+```
+
+#### Built-in tools preservation (ported from `test/builtin_tools_translation_test.go`)
+
+```erlang
+-module(builtin_tools_tests).
+-include_lib("eunit/include/eunit.hrl").
+
+openai_to_codex_preserves_web_search_test() ->
+    Input = #{
+        <<"model">> => <<"gpt-4">>,
+        <<"input">> => [#{<<"role">> => <<"user">>, <<"content">> => <<"search web">>}],
+        <<"tools">> => [
+            #{<<"type">> => <<"web_search">>,
+              <<"search_context_size">> => <<"high">>}
+        ],
+        <<"tool_choice">> => #{<<"type">> => <<"web_search">>}
+    },
+    Result = translator_openai_codex:request(<<"gpt-4">>, Input, true),
+    Tools = maps:get(<<"tools">>, Result),
+    ?assertEqual(1, length(Tools)),
+    [Tool] = Tools,
+    ?assertEqual(<<"web_search">>, maps:get(<<"type">>, Tool)),
+    ?assertEqual(<<"high">>, maps:get(<<"search_context_size">>, Tool)).
+
+openai_responses_to_chat_completions_strips_builtin_tools_test() ->
+    Input = #{
+        <<"model">> => <<"gpt-4">>,
+        <<"input">> => [#{<<"role">> => <<"user">>, <<"content">> => <<"hello">>}],
+        <<"tools">> => [
+            #{<<"type">> => <<"web_search">>},
+            #{<<"type">> => <<"function">>, <<"name">> => <<"my_tool">>}
+        ]
+    },
+    Result = translator_openai_responses_openai:request(<<"gpt-4">>, Input, true),
+    Tools = maps:get(<<"tools">>, Result, []),
+    %% Only function tools preserved in chat-completions format
+    ?assertEqual(1, length(Tools)),
+    [Tool] = Tools,
+    ?assertEqual(<<"function">>, maps:get(<<"type">>, Tool)).
+```
+
+#### Claude Code compatibility sentinels (ported from `test/claude_code_compatibility_sentinel_test.go`)
+
+```erlang
+-module(claude_code_compat_tests).
+-include_lib("eunit/include/eunit.hrl").
+
+tool_progress_shape_test() ->
+    {ok, JSON} = file:read_file("test/fixtures/claude_code_sentinels/tool_progress.json"),
+    Msg = jiffy:decode(JSON, [return_maps]),
+    %% Required fields
+    ?assert(maps:is_key(<<"type">>, Msg)),
+    ?assert(maps:is_key(<<"tool_use_id">>, Msg)),
+    ?assert(maps:is_key(<<"tool_name">>, Msg)),
+    ?assert(maps:is_key(<<"session_id">>, Msg)),
+    ?assert(maps:is_key(<<"elapsed_time_seconds">>, Msg)),
+    ?assertEqual(<<"tool_progress">>, maps:get(<<"type">>, Msg)).
+
+session_state_shape_test() ->
+    {ok, JSON} = file:read_file("test/fixtures/claude_code_sentinels/session_state_changed.json"),
+    Msg = jiffy:decode(JSON, [return_maps]),
+    ?assertEqual(<<"system">>, maps:get(<<"type">>, Msg)),
+    ?assertEqual(<<"session_state_changed">>, maps:get(<<"subtype">>, Msg)),
+    State = maps:get(<<"state">>, Msg),
+    ?assert(lists:member(State, [<<"idle">>, <<"running">>, <<"requires_action">>])).
+
+tool_use_summary_shape_test() ->
+    {ok, JSON} = file:read_file("test/fixtures/claude_code_sentinels/tool_use_summary.json"),
+    Msg = jiffy:decode(JSON, [return_maps]),
+    ?assert(maps:is_key(<<"type">>, Msg)),
+    ?assert(maps:is_key(<<"summary">>, Msg)),
+    ?assert(is_list(maps:get(<<"preceding_tool_use_ids">>, Msg))).
+
+control_request_can_use_tool_shape_test() ->
+    {ok, JSON} = file:read_file(
+        "test/fixtures/claude_code_sentinels/control_request_can_use_tool.json"),
+    Msg = jiffy:decode(JSON, [return_maps]),
+    ?assertEqual(<<"control_request">>, maps:get(<<"type">>, Msg)),
+    ?assert(maps:is_key(<<"request_id">>, Msg)),
+    Request = maps:get(<<"request">>, Msg),
+    ?assert(maps:is_key(<<"subtype">>, Request)),
+    ?assert(maps:is_key(<<"tool_name">>, Request)),
+    ?assert(maps:is_key(<<"tool_use_id">>, Request)),
+    ?assert(maps:is_key(<<"input">>, Request)).
+```
+
+### Phase 3: Credential Process Tests
+
+```erlang
+-module(credential_proc_tests).
+-include_lib("eunit/include/eunit.hrl").
+
+%% Tests for the gen_statem credential lifecycle
+
+ready_to_cooldown_on_429_test() ->
+    {ok, Pid} = credential_proc:start_link(#{
+        id => <<"test-cred">>,
+        provider => claude,
+        metadata => #{<<"access_token">> => <<"sk-test">>}
+    }),
+    ?assertEqual(available, credential_proc:get_status(Pid, <<"claude-3">>)),
+    ok = credential_proc:mark_result(Pid, <<"claude-3">>, 429),
+    ?assertEqual(unavailable, credential_proc:get_status(Pid, <<"claude-3">>)),
+    credential_proc:stop(Pid).
+
+cooldown_expires_returns_to_ready_test() ->
+    {ok, Pid} = credential_proc:start_link(#{
+        id => <<"test-cred">>,
+        provider => claude,
+        metadata => #{<<"access_token">> => <<"sk-test">>},
+        %% Override backoff for fast test
+        backoff_base_ms => 50
+    }),
+    ok = credential_proc:mark_result(Pid, <<"claude-3">>, 429),
+    ?assertEqual(unavailable, credential_proc:get_status(Pid, <<"claude-3">>)),
+    %% Wait for backoff to expire (50ms)
+    timer:sleep(100),
+    ?assertEqual(available, credential_proc:get_status(Pid, <<"claude-3">>)),
+    credential_proc:stop(Pid).
+
+success_clears_model_cooldown_test() ->
+    {ok, Pid} = credential_proc:start_link(#{
+        id => <<"test-cred">>,
+        provider => claude,
+        metadata => #{<<"access_token">> => <<"sk-test">>}
+    }),
+    ok = credential_proc:mark_result(Pid, <<"claude-3">>, 429),
+    ?assertEqual(unavailable, credential_proc:get_status(Pid, <<"claude-3">>)),
+    ok = credential_proc:mark_result(Pid, <<"claude-3">>, 200),
+    ?assertEqual(available, credential_proc:get_status(Pid, <<"claude-3">>)),
+    credential_proc:stop(Pid).
+
+disabled_is_terminal_test() ->
+    {ok, Pid} = credential_proc:start_link(#{
+        id => <<"test-cred">>,
+        provider => claude,
+        metadata => #{<<"access_token">> => <<"sk-test">>}
+    }),
+    ok = credential_proc:disable(Pid),
+    ?assertEqual(disabled, credential_proc:get_status(Pid, <<"claude-3">>)),
+    %% Can't transition out of disabled via mark_result
+    ok = credential_proc:mark_result(Pid, <<"claude-3">>, 200),
+    ?assertEqual(disabled, credential_proc:get_status(Pid, <<"claude-3">>)),
+    credential_proc:stop(Pid).
+
+thinking_suffix_shares_model_state_test() ->
+    %% "test-model(high)" checks state of "test-model"
+    {ok, Pid} = credential_proc:start_link(#{
+        id => <<"test-cred">>,
+        provider => claude,
+        metadata => #{<<"access_token">> => <<"sk-test">>}
+    }),
+    ok = credential_proc:mark_result(Pid, <<"test-model">>, 429),
+    %% Suffixed variant should also be unavailable
+    ?assertEqual(unavailable, credential_proc:get_status(Pid, <<"test-model(high)">>)),
+    credential_proc:stop(Pid).
+```
+
+### Phase 4: Integration Tests (Common Test)
+
+```erlang
+-module(proxy_integration_SUITE).
+-include_lib("common_test/include/ct.hrl").
+
+all() -> [
+    chat_completions_roundtrip,
+    streaming_sse_format,
+    retry_on_502,
+    credential_rotation_on_failure,
+    thinking_suffix_e2e,
+    responses_api_websocket,
+    management_config_crud
+].
+
+init_per_suite(Config) ->
+    %% Start the full application
+    {ok, _} = application:ensure_all_started(cli_proxy),
+    %% Start mock upstream servers
+    {ok, ClaudeMock} = mock_upstream:start(claude, 9100),
+    {ok, GeminiMock} = mock_upstream:start(gemini, 9101),
+    {ok, CodexMock} = mock_upstream:start(codex, 9102),
+    [{claude_mock, ClaudeMock},
+     {gemini_mock, GeminiMock},
+     {codex_mock, CodexMock} | Config].
+
+end_per_suite(Config) ->
+    mock_upstream:stop(?config(claude_mock, Config)),
+    mock_upstream:stop(?config(gemini_mock, Config)),
+    mock_upstream:stop(?config(codex_mock, Config)),
+    application:stop(cli_proxy),
+    Config.
+
+chat_completions_roundtrip(Config) ->
+    %% Send OpenAI-format request, verify Claude-format upstream call
+    Body = jiffy:encode(#{
+        <<"model">> => <<"claude-3-sonnet">>,
+        <<"messages">> => [#{<<"role">> => <<"user">>, <<"content">> => <<"Hi">>}],
+        <<"max_tokens">> => 100
+    }),
+    {ok, Status, _Headers, RespBody} =
+        hackney:post(<<"http://localhost:8317/v1/chat/completions">>,
+                     [{<<"Authorization">>, <<"Bearer test-key">>},
+                      {<<"Content-Type">>, <<"application/json">>}],
+                     Body, []),
+    ?assertEqual(200, Status),
+    Resp = jiffy:decode(RespBody, [return_maps]),
+    ?assertEqual(<<"chat.completion">>, maps:get(<<"object">>, Resp)),
+    ?assert(length(maps:get(<<"choices">>, Resp)) > 0).
+
+streaming_sse_format(Config) ->
+    %% Verify SSE streaming format
+    Body = jiffy:encode(#{
+        <<"model">> => <<"claude-3-sonnet">>,
+        <<"messages">> => [#{<<"role">> => <<"user">>, <<"content">> => <<"Hi">>}],
+        <<"stream">> => true
+    }),
+    {ok, Status, _Headers, ClientRef} =
+        hackney:post(<<"http://localhost:8317/v1/chat/completions">>,
+                     [{<<"Authorization">>, <<"Bearer test-key">>},
+                      {<<"Content-Type">>, <<"application/json">>}],
+                     Body, [{recv_timeout, 30000}]),
+    ?assertEqual(200, Status),
+    %% Read streaming chunks
+    Chunks = read_sse_chunks(ClientRef, []),
+    ?assert(length(Chunks) > 0),
+    %% Last chunk should be [DONE]
+    ?assertEqual(<<"[DONE]">>, lists:last(Chunks)).
+
+retry_on_502(Config) ->
+    %% First request fails with 502, second succeeds
+    mock_upstream:set_responses(?config(claude_mock, Config), [
+        {502, <<"Bad Gateway">>},
+        {200, mock_claude_response()}
+    ]),
+    Body = jiffy:encode(#{
+        <<"model">> => <<"claude-3-sonnet">>,
+        <<"messages">> => [#{<<"role">> => <<"user">>, <<"content">> => <<"Hi">>}]
+    }),
+    {ok, Status, _, _} =
+        hackney:post(<<"http://localhost:8317/v1/chat/completions">>,
+                     [{<<"Authorization">>, <<"Bearer test-key">>},
+                      {<<"Content-Type">>, <<"application/json">>}],
+                     Body, []),
+    %% Should succeed after retry
+    ?assertEqual(200, Status).
+
+responses_api_websocket(Config) ->
+    %% Test Responses API WebSocket protocol
+    {ok, ConnPid} = gun:open("localhost", 8317),
+    {ok, _} = gun:await_up(ConnPid),
+    StreamRef = gun:ws_upgrade(ConnPid, "/v1/responses",
+                               [{<<"authorization">>, <<"Bearer test-key">>}]),
+    receive
+        {gun_upgrade, ConnPid, StreamRef, [<<"websocket">>], _} -> ok
+    after 5000 -> ct:fail(ws_upgrade_timeout)
+    end,
+    %% Send response.create
+    Req = jiffy:encode(#{
+        <<"type">> => <<"response.create">>,
+        <<"model">> => <<"gpt-4">>,
+        <<"input">> => [#{<<"type">> => <<"message">>,
+                          <<"role">> => <<"user">>,
+                          <<"content">> => <<"Hello">>}]
+    }),
+    gun:ws_send(ConnPid, StreamRef, {text, Req}),
+    %% Receive events
+    Events = receive_ws_events(ConnPid, StreamRef, []),
+    %% Verify event sequence
+    Types = [maps:get(<<"type">>, E) || E <- Events, is_map(E)],
+    ?assert(lists:member(<<"response.created">>, Types)),
+    ?assert(lists:member(<<"response.completed">>, Types)),
+    gun:close(ConnPid).
+```
+
+### Phase 5: Property-Based Tests (PropEr)
+
+For format translation invariants that must hold across ALL inputs:
+
+```erlang
+-module(translator_properties).
+-include_lib("proper/include/proper.hrl").
+-include_lib("eunit/include/eunit.hrl").
+
+%% Property: translating A→B→A preserves message content
+roundtrip_preserves_content_prop() ->
+    ?FORALL({Messages, Model},
+            {list(message_gen()), model_gen()},
+        begin
+            Input = #{<<"model">> => Model, <<"messages">> => Messages,
+                      <<"max_tokens">> => 1024, <<"stream">> => false},
+            %% OpenAI → Claude → OpenAI
+            Claude = translator_openai_claude:request(Model, Input, false),
+            Back = translator_claude_openai:request(Model, Claude, false),
+            %% Core content should be preserved
+            extract_texts(Input) =:= extract_texts(Back)
+        end).
+
+%% Property: token usage is never negative
+usage_non_negative_prop() ->
+    ?FORALL(Response, claude_response_gen(),
+        begin
+            Result = translator_claude_openai:response_nonstream(Response),
+            Usage = maps:get(<<"usage">>, Result, #{}),
+            maps:get(<<"prompt_tokens">>, Usage, 0) >= 0 andalso
+            maps:get(<<"completion_tokens">>, Usage, 0) >= 0
+        end).
+
+%% Property: thinking budget always within model bounds after normalization
+thinking_clamped_prop() ->
+    ?FORALL({Budget, ModelKey},
+            {integer(-1, 999999), oneof(maps:keys(thinking_test_models:models()))},
+        begin
+            Model = maps:get(ModelKey, thinking_test_models:models()),
+            case maps:get(thinking, Model) of
+                undefined -> true;  %% No thinking = always valid
+                #{min := Min, max := Max} ->
+                    Result = thinking:clamp_budget(Budget, Min, Max, Model),
+                    (Result =:= -1 andalso maps:get(dynamic_allowed, Model, false))
+                    orelse (Result =:= 0 andalso maps:get(zero_allowed, Model, false))
+                    orelse (Result >= Min andalso Result =< Max)
+            end
+        end).
+
+%% Generators
+message_gen() ->
+    oneof([
+        #{<<"role">> => <<"user">>, <<"content">> => binary()},
+        #{<<"role">> => <<"assistant">>, <<"content">> => binary()}
+    ]).
+
+model_gen() ->
+    oneof([<<"claude-3-sonnet">>, <<"gpt-4">>, <<"gemini-pro">>]).
+```
+
+### Phase 6: WebSocket Protocol Tests
+
+```erlang
+-module(responses_ws_protocol_tests).
+-include_lib("eunit/include/eunit.hrl").
+
+%% Sequence numbering monotonic
+sequence_numbers_monotonic_test() ->
+    Events = simulate_response_stream(),
+    SeqNums = [maps:get(<<"sequence_number">>, E) || E <- Events,
+               maps:is_key(<<"sequence_number">>, E)],
+    ?assertEqual(SeqNums, lists:sort(SeqNums)),
+    %% Starts at 0
+    ?assertEqual(0, hd(SeqNums)).
+
+%% Tool cache repair
+tool_cache_repairs_orphaned_output_test() ->
+    State0 = responses_ws_handler:init_test_state(),
+    %% First request: response includes function_call
+    {_Frames1, State1} = responses_ws_handler:handle_response_output(
+        [#{<<"type">> => <<"function_call">>,
+           <<"call_id">> => <<"call_1">>,
+           <<"name">> => <<"search">>,
+           <<"arguments">> => <<"{}">>}],
+        State0),
+    %% Second request: client sends only function_call_output (no matching call)
+    Input = [#{<<"type">> => <<"function_call_output">>,
+               <<"call_id">> => <<"call_1">>,
+               <<"output">> => <<"result">>}],
+    Repaired = responses_ws_handler:repair_tool_calls(Input, State1),
+    %% Should inject cached function_call before the output
+    ?assertEqual(2, length(Repaired)),
+    ?assertEqual(<<"function_call">>, maps:get(<<"type">>, hd(Repaired))).
+
+%% Credential unpin on auth error
+credential_unpin_on_401_test() ->
+    State0 = responses_ws_handler:init_test_state(),
+    State1 = State0#state{pinned_auth_id = <<"cred-1">>},
+    State2 = responses_ws_handler:maybe_unpin_auth(401, State1),
+    ?assertEqual(undefined, State2#state.pinned_auth_id).
+
+credential_stays_pinned_on_200_test() ->
+    State0 = responses_ws_handler:init_test_state(),
+    State1 = State0#state{pinned_auth_id = <<"cred-1">>},
+    State2 = responses_ws_handler:maybe_unpin_auth(200, State1),
+    ?assertEqual(<<"cred-1">>, State2#state.pinned_auth_id).
+```
+
+### Phase 7: Management & Config Tests
+
+```erlang
+-module(management_api_tests).
+-include_lib("common_test/include/ct.hrl").
+
+all() -> [
+    get_config, put_config, patch_config,
+    get_auth_files, upload_auth_file, delete_auth_file,
+    toggle_debug, toggle_request_log,
+    get_api_keys, put_api_keys,
+    routing_strategy_switch,
+    quota_exceeded_config,
+    amp_model_mappings_crud
+].
+
+get_config(Config) ->
+    {ok, 200, _, Body} = request(get, "/v0/management/config", Config),
+    Resp = jiffy:decode(Body, [return_maps]),
+    ?assert(maps:is_key(<<"port">>, Resp)).
+
+routing_strategy_switch(Config) ->
+    %% Set to fill-first
+    {ok, 200, _, _} = request(put, "/v0/management/routing/strategy",
+                              jiffy:encode(<<"fill-first">>), Config),
+    %% Verify
+    {ok, 200, _, Body} = request(get, "/v0/management/routing/strategy", Config),
+    ?assertEqual(<<"\"fill-first\"">>, Body).
+
+amp_model_mappings_crud(Config) ->
+    Mappings = [#{<<"from">> => <<"gpt-.*">>,
+                  <<"to">> => <<"gpt-4-turbo">>,
+                  <<"regex">> => true}],
+    {ok, 200, _, _} = request(put, "/v0/management/ampcode/model-mappings",
+                              jiffy:encode(Mappings), Config),
+    {ok, 200, _, Body} = request(get, "/v0/management/ampcode/model-mappings", Config),
+    Result = jiffy:decode(Body, [return_maps]),
+    ?assertEqual(1, length(Result)),
+    [M] = Result,
+    ?assertEqual(<<"gpt-.*">>, maps:get(<<"from">>, M)).
+```
+
+### Test execution commands
+
+```bash
+## Run all EUnit tests
+rebar3 eunit
+
+## Run specific test module
+rebar3 eunit --module=clips_selection_tests
+
+## Run Common Test suites
+rebar3 ct
+
+## Run specific suite
+rebar3 ct --suite=proxy_integration_SUITE
+
+## Run PropEr tests
+rebar3 proper
+
+## Run with coverage
+rebar3 cover
+
+## Generate coverage report
+rebar3 cover --verbose
+```
+
+### Coverage targets
+
+| Module group | Target | Rationale |
+|--------------|--------|-----------|
+| CLIPS rules | 100% | Core decision logic, every rule must fire |
+| Translators | 95% | Format conversion correctness is critical |
+| Credential proc | 90% | State machine transitions must be complete |
+| Conductors | 85% | Orchestration + retry paths |
+| HTTP handlers | 80% | Happy path + error paths |
+| Config/watcher | 75% | File I/O has edge cases |
+| Management API | 70% | CRUD is repetitive |
+
+### CI integration
+
+```yaml
+# In .github/workflows/test.yml or equivalent
+steps:
+  - name: Compile
+    run: rebar3 compile
+
+  - name: CLIPS port
+    run: cd apps/clips_port && make && make test
+
+  - name: EUnit (fast, no external deps)
+    run: rebar3 eunit
+
+  - name: Common Test (integration, needs mock servers)
+    run: rebar3 ct
+
+  - name: PropEr (property-based, may find edge cases)
+    run: rebar3 proper --numtests 1000
+
+  - name: Coverage check
+    run: |
+      rebar3 cover
+      # Fail if below 80% overall
+      rebar3 cover --min_coverage 80
+
+  - name: Dialyzer (type checking)
+    run: rebar3 dialyzer
+```
+
+### Test fixtures directory
+
+```
+test/
+├── fixtures/
+│   ├── claude_code_sentinels/
+│   │   ├── tool_progress.json
+│   │   ├── session_state_changed.json
+│   │   ├── tool_use_summary.json
+│   │   └── control_request_can_use_tool.json
+│   │
+│   ├── requests/                    # Sample request payloads
+│   │   ├── openai_chat_basic.json
+│   │   ├── openai_chat_tools.json
+│   │   ├── openai_chat_vision.json
+│   │   ├── claude_messages_basic.json
+│   │   ├── gemini_generate_basic.json
+│   │   ├── responses_create.json
+│   │   └── responses_append_with_tool.json
+│   │
+│   ├── responses/                   # Expected response payloads
+│   │   ├── claude_stream_events.jsonl
+│   │   ├── openai_stream_chunks.jsonl
+│   │   ├── gemini_stream_chunks.jsonl
+│   │   └── responses_ws_events.jsonl
+│   │
+│   ├── configs/                     # Test configuration files
+│   │   ├── minimal.yaml
+│   │   ├── full.yaml
+│   │   ├── home_mode.yaml
+│   │   └── amp_enabled.yaml
+│   │
+│   └── auth_files/                  # Mock auth credential files
+│       ├── claude_test.json
+│       ├── codex_test.json
+│       ├── gemini_test.json
+│       └── kimi_test.json
+│
+├── mock_upstream.erl                # Configurable mock HTTP/WS server
+├── test_helpers.erl                 # Common assertion helpers
+└── thinking_test_models.erl         # Model definitions for thinking tests
+```
+
+---
+
 ## Protocol Translation Architecture
 
 ### The Go problem
