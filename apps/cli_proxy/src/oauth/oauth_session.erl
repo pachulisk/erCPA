@@ -257,15 +257,7 @@ build_auth_url(codex, _Config, State, Verifier) ->
         <<"&state=">>, State
     ]);
 build_auth_url(gemini, _Config, State, _Verifier) ->
-    iolist_to_binary([
-        <<"https://accounts.google.com/o/oauth2/v2/auth">>,
-        <<"?client_id=681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com">>,
-        <<"&redirect_uri=http://localhost:8085/callback">>,
-        <<"&response_type=code">>,
-        <<"&scope=https://www.googleapis.com/auth/cloud-platform+https://www.googleapis.com/auth/userinfo.email">>,
-        <<"&access_type=offline">>,
-        <<"&state=">>, State
-    ]);
+    oauth_gemini:auth_url(State, <<>>);
 build_auth_url(_Provider, _Config, State, _Verifier) ->
     <<"https://example.com/oauth?state=", State/binary>>.
 
