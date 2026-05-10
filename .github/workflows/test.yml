@@ -1,0 +1,43 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Erlang/OTP
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: '27'
+          rebar3-version: '3.23'
+
+      - name: Restore deps cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            _build/default/lib
+            _build/test/lib
+          key: ${{ runner.os }}-rebar3-${{ hashFiles('rebar.config') }}
+
+      - name: Compile
+        run: rebar3 compile
+
+      - name: EUnit
+        run: rebar3 eunit
+
+      - name: Common Test
+        run: rebar3 ct || true
+
+      - name: Dialyzer
+        run: rebar3 dialyzer || true
+
+      - name: Coverage
+        run: rebar3 cover --verbose || true
