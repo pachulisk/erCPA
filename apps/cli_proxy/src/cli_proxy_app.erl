@@ -14,9 +14,23 @@ start(_StartType, _StartArgs) ->
     Port = application:get_env(cli_proxy, port, 8317),
     Dispatch = cowboy_router:compile([
         {'_', [
+            %% Health
             {"/healthz", health_handler, []},
+
+            %% OpenAI compatible
             {"/v1/chat/completions", openai_handler, []},
-            {"/v1/models", models_handler, []}
+            {"/v1/models", models_handler, []},
+
+            %% Responses API
+            {"/v1/responses", responses_handler, []},
+            {"/v1/responses/compact", responses_compact_handler, []},
+
+            %% Responses API WebSocket (upgrade)
+            {"/v1/ws/responses", responses_ws_handler, []},
+
+            %% Codex direct aliases
+            {"/backend-api/codex/responses", responses_handler, []},
+            {"/backend-api/codex/responses/compact", responses_compact_handler, []}
         ]}
     ]),
     {ok, _} = cowboy:start_clear(http_listener,
