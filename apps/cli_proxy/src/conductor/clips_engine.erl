@@ -75,10 +75,30 @@ init([PortPath]) ->
     process_flag(trap_exit, true),
     case start_port(PortPath) of
         {ok, Port} ->
-            {ok, #state{port = Port, port_path = PortPath}};
+            State = #state{port = Port, port_path = PortPath},
+            %% Load CLIPS rule files on startup
+            load_rules(State),
+            {ok, State};
         {error, Reason} ->
             {stop, Reason}
     end.
+
+load_rules(#state{port = Port}) ->
+    PrivDir = code:priv_dir(cli_proxy),
+    ClipsDir = filename:join(PrivDir, "clips"),
+    Files = ["templates.clp", "selection.clp", "cooldown.clp",
+             "thinking.clp", "quota.clp", "routing.clp"],
+    lists:foreach(fun(File) ->
+        Path = filename:join(ClipsDir, File),
+        case filelib:is_file(Path) of
+            true ->
+                JSON = jiffy:encode(#{<<"op">> => <<"load">>,
+                                      <<"file">> => list_to_binary(Path)}),
+                port_command_sync(Port, JSON);
+            false ->
+                ok
+        end
+    end, Files).
 
 handle_call({assert, Fact}, _From, #state{port = Port} = State) ->
     JSON = encode_assert(Fact),
@@ -119,8 +139,8 @@ handle_call(run, _From, #state{port = Port} = State) ->
 
 handle_call({query, Template, SlotName, SlotValue}, _From, #state{port = Port} = State) ->
     JSON = jiffy:encode(#{<<"op">> => <<"query">>,
-                          <<"template">> => to_bin(Template),
-                          <<"slot">> => SlotName,
+                          <<"template">> => to_clips_template(to_bin(Template)),
+                          <<"slot">> => to_clips_slot(SlotName),
                           <<"value">> => SlotValue}),
     Reply = port_command_sync(Port, JSON),
     case Reply of
@@ -133,6 +153,8 @@ handle_call({query, Template, SlotName, SlotValue}, _From, #state{port = Port} =
 handle_call(reset, _From, #state{port = Port} = State) ->
     JSON = jiffy:encode(#{<<"op">> => <<"reset">>}),
     _Reply = port_command_sync(Port, JSON),
+    %% Reload rules after reset (reset clears everything in CLIPS)
+    load_rules(State),
     {reply, ok, State};
 
 handle_call({load, FilePath}, _From, #state{port = Port} = State) ->
@@ -194,11 +216,65 @@ port_command_sync(Port, JSON) ->
     end.
 
 encode_assert({TemplateName, Fields}) when is_map(Fields) ->
-    jiffy:encode(#{<<"op">> => <<"assert">>,
-                   <<"fact">> => [to_bin(TemplateName), Fields]});
+    %% Convert to CLIPS fact syntax: (template (slot1 val1) (slot2 val2) ...)
+    ClipsTemplate = to_clips_template(to_bin(TemplateName)),
+    ClipsFact = map_to_clips_fact(ClipsTemplate, Fields),
+    jiffy:encode(#{<<"op">> => <<"assert">>, <<"fact">> => ClipsFact});
 encode_assert(Fact) when is_map(Fact) ->
     jiffy:encode(#{<<"op">> => <<"assert">>, <<"fact">> => Fact}).
 
 to_bin(A) when is_atom(A) -> atom_to_binary(A, utf8);
 to_bin(B) when is_binary(B) -> B;
 to_bin(L) when is_list(L) -> list_to_binary(L).
+
+%% Convert Erlang map to CLIPS fact syntax string
+%% #{id => <<"c1">>, status => active} → (template (id "c1") (status active))
+map_to_clips_fact(Template, Fields) ->
+    Slots = maps:fold(fun(K, V, Acc) ->
+        SlotName = to_bin(K),
+        %% Convert slot name from camelCase/underscore to CLIPS hyphen convention
+        ClipsSlotName = to_clips_slot(SlotName),
+        SlotVal = format_clips_value(V),
+        [<<" (", ClipsSlotName/binary, " ", SlotVal/binary, ")">> | Acc]
+    end, [], Fields),
+    SlotsStr = iolist_to_binary(lists:reverse(Slots)),
+    <<"(", Template/binary, SlotsStr/binary, ")">>.
+
+%% Template name conversion (Erlang atoms use _ but CLIPS uses -)
+to_clips_template(<<"select_request">>) -> <<"select-request">>;
+to_clips_template(<<"selection_result">>) -> <<"selection-result">>;
+to_clips_template(<<"model_state">>) -> <<"model-state">>;
+to_clips_template(<<"session_binding">>) -> <<"session-binding">>;
+to_clips_template(<<"model_capability">>) -> <<"model-capability">>;
+to_clips_template(<<"thinking_input">>) -> <<"thinking-input">>;
+to_clips_template(<<"thinking_output">>) -> <<"thinking-output">>;
+to_clips_template(<<"quota_state">>) -> <<"quota-state">>;
+to_clips_template(<<"config_flag">>) -> <<"config-flag">>;
+to_clips_template(Other) -> Other.
+
+to_clips_slot(<<"session_id">>) -> <<"session-id">>;
+to_clips_slot(<<"credential_id">>) -> <<"credential-id">>;
+to_clips_slot(<<"request_id">>) -> <<"request-id">>;
+to_clips_slot(<<"cooldown_until">>) -> <<"cooldown-until">>;
+to_clips_slot(<<"backoff_level">>) -> <<"backoff-level">>;
+to_clips_slot(<<"has_websocket">>) -> <<"has-websocket">>;
+to_clips_slot(<<"need_websocket">>) -> <<"need-websocket">>;
+to_clips_slot(<<"bound_at">>) -> <<"bound-at">>;
+to_clips_slot(<<"status_code">>) -> <<"status-code">>;
+to_clips_slot(<<"source_format">>) -> <<"source-format">>;
+to_clips_slot(<<"target_format">>) -> <<"target-format">>;
+to_clips_slot(<<"thinking_min">>) -> <<"thinking-min">>;
+to_clips_slot(<<"thinking_max">>) -> <<"thinking-max">>;
+to_clips_slot(<<"thinking_levels">>) -> <<"thinking-levels">>;
+to_clips_slot(<<"thinking_mode">>) -> <<"thinking-mode">>;
+to_clips_slot(<<"suffix_override">>) -> <<"suffix-override">>;
+to_clips_slot(<<"recover_at">>) -> <<"recover-at">>;
+to_clips_slot(Other) -> Other.
+
+format_clips_value(V) when is_binary(V) -> <<"\"", V/binary, "\"">>;
+format_clips_value(V) when is_integer(V) -> integer_to_binary(V);
+format_clips_value(V) when is_float(V) -> float_to_binary(V, [{decimals, 6}]);
+format_clips_value(true) -> <<"yes">>;
+format_clips_value(false) -> <<"no">>;
+format_clips_value(V) when is_atom(V) -> atom_to_binary(V, utf8);
+format_clips_value(V) -> iolist_to_binary(io_lib:format("~p", [V])).

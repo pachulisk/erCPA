@@ -331,38 +331,40 @@ exclude_model_cooldown_test_() ->
 %% ============================================================
 
 setup_clips() ->
-    %% Start clips_engine if not already running
+    %% Start clips_engine with real CLIPS port
     case whereis(clips_engine) of
         undefined ->
-            %% Use mock port for testing
-            MockPath = create_mock_port(),
-            {ok, _} = clips_engine:start_link(MockPath),
-            MockPath;
+            PortPath = real_port_path(),
+            case filelib:is_file(PortPath) of
+                true ->
+                    {ok, _} = clips_engine:start_link(PortPath),
+                    real_port;
+                false ->
+                    %% Fall back to mock if port not compiled
+                    MockPath = create_mock_port(),
+                    {ok, _} = clips_engine:start_link(MockPath),
+                    {mock, MockPath}
+            end;
         _Pid ->
             already_running
     end.
 
 cleanup_clips(already_running) -> ok;
-cleanup_clips(MockPath) ->
+cleanup_clips(real_port) ->
+    gen_server:stop(clips_engine);
+cleanup_clips({mock, MockPath}) ->
     gen_server:stop(clips_engine),
     file:delete(MockPath).
 
+real_port_path() ->
+    case code:priv_dir(cli_proxy) of
+        {error, _} -> "/nonexistent";
+        PrivDir -> filename:join(PrivDir, "clips_port")
+    end.
+
 create_mock_port() ->
     MockPath = filename:join(["/tmp", "mock_clips_sel_" ++ integer_to_list(erlang:unique_integer([positive])) ++ ".sh"]),
-    %% Smart mock that handles selection logic
-    Script = <<"#!/bin/sh\n"
-               "while IFS= read -r line; do\n"
-               "  case \"$line\" in\n"
-               "    *'\"op\":\"reset\"'*) echo '{\"ok\":true}' ;;\n"
-               "    *'\"op\":\"run\"'*) echo '{\"ok\":true,\"fired\":5}' ;;\n"
-               "    *'\"op\":\"assert\"'*) echo '{\"ok\":true,\"fact-id\":1}' ;;\n"
-               "    *'\"op\":\"retract\"'*) echo '{\"ok\":true}' ;;\n"
-               "    *'\"op\":\"retract-all\"'*) echo '{\"ok\":true}' ;;\n"
-               "    *'\"op\":\"query\"'*) echo '{\"ok\":true,\"result\":null}' ;;\n"
-               "    *'\"op\":\"load\"'*) echo '{\"ok\":true}' ;;\n"
-               "    *) echo '{\"error\":\"unknown\"}' ;;\n"
-               "  esac\n"
-               "done\n">>,
+    Script = <<"#!/bin/sh\nwhile IFS= read -r line; do\n  case \"$line\" in\n    *'\"op\":\"reset\"'*) echo '{\"ok\":true}' ;;\n    *'\"op\":\"run\"'*) echo '{\"ok\":true,\"fired\":0}' ;;\n    *'\"op\":\"assert\"'*) echo '{\"ok\":true,\"fact-id\":1}' ;;\n    *'\"op\":\"retract\"'*) echo '{\"ok\":true}' ;;\n    *'\"op\":\"retract-all\"'*) echo '{\"ok\":true}' ;;\n    *'\"op\":\"query\"'*) echo '{\"ok\":true,\"result\":null}' ;;\n    *'\"op\":\"load\"'*) echo '{\"ok\":true}' ;;\n    *) echo '{\"error\":\"unknown\"}' ;;\n  esac\ndone\n">>,
     ok = file:write_file(MockPath, Script),
     os:cmd("chmod +x " ++ MockPath),
     MockPath.

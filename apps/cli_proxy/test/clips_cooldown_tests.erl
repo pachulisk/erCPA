@@ -239,33 +239,32 @@ mark_5xx_short_cooldown_test_() ->
 setup_clips() ->
     case whereis(clips_engine) of
         undefined ->
-            MockPath = create_mock_port(),
-            {ok, _} = clips_engine:start_link(MockPath),
-            MockPath;
+            PortPath = real_port_path(),
+            case filelib:is_file(PortPath) of
+                true ->
+                    {ok, _} = clips_engine:start_link(PortPath),
+                    real_port;
+                false ->
+                    {ok, _} = clips_engine:start_link(create_mock_port()),
+                    mock
+            end;
         _Pid ->
             already_running
     end.
 
 cleanup_clips(already_running) -> ok;
-cleanup_clips(MockPath) ->
-    gen_server:stop(clips_engine),
-    file:delete(MockPath).
+cleanup_clips(real_port) -> gen_server:stop(clips_engine);
+cleanup_clips(mock) -> gen_server:stop(clips_engine).
+
+real_port_path() ->
+    case code:priv_dir(cli_proxy) of
+        {error, _} -> "/nonexistent";
+        PrivDir -> filename:join(PrivDir, "clips_port")
+    end.
 
 create_mock_port() ->
     MockPath = filename:join(["/tmp", "mock_clips_cd_" ++ integer_to_list(erlang:unique_integer([positive])) ++ ".sh"]),
-    Script = <<"#!/bin/sh\n"
-               "while IFS= read -r line; do\n"
-               "  case \"$line\" in\n"
-               "    *'\"op\":\"reset\"'*) echo '{\"ok\":true}' ;;\n"
-               "    *'\"op\":\"run\"'*) echo '{\"ok\":true,\"fired\":1}' ;;\n"
-               "    *'\"op\":\"assert\"'*) echo '{\"ok\":true,\"fact-id\":1}' ;;\n"
-               "    *'\"op\":\"retract\"'*) echo '{\"ok\":true}' ;;\n"
-               "    *'\"op\":\"retract-all\"'*) echo '{\"ok\":true}' ;;\n"
-               "    *'\"op\":\"query\"'*) echo '{\"ok\":true,\"result\":null}' ;;\n"
-               "    *'\"op\":\"load\"'*) echo '{\"ok\":true}' ;;\n"
-               "    *) echo '{\"error\":\"unknown\"}' ;;\n"
-               "  esac\n"
-               "done\n">>,
+    Script = <<"#!/bin/sh\nwhile IFS= read -r line; do\necho '{\"ok\":true,\"result\":null}'\ndone\n">>,
     ok = file:write_file(MockPath, Script),
     os:cmd("chmod +x " ++ MockPath),
     MockPath.
