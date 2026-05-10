@@ -33,7 +33,13 @@ start(_StartType, _StartArgs) ->
             {"/backend-api/codex/responses/compact", responses_compact_handler, []},
 
             %% Management API
-            {"/v0/management/[...]", management_handler, []}
+            {"/v0/management/[...]", management_handler, []},
+
+            %% OAuth callbacks
+            {"/anthropic/callback", oauth_callback_handler, []},
+            {"/codex/callback", oauth_callback_handler, []},
+            {"/google/callback", oauth_callback_handler, []},
+            {"/antigravity/callback", oauth_callback_handler, []}
         ]}
     ]),
     {ok, _} = cowboy:start_clear(http_listener,

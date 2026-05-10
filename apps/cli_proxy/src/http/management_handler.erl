@@ -154,6 +154,98 @@ handle(<<"GET">>, <<"gemini-cli-auth-url">>, Req0, State) ->
     end;
 
 %%====================================================================
+%% Logging
+%%====================================================================
+
+handle(<<"GET">>, <<"logging-to-file">>, Req0, State) ->
+    reply_json(200, config_loader:get(logging_to_file, false), Req0, State);
+
+handle(<<"PUT">>, <<"logging-to-file">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Val = jiffy:decode(Body),
+    config_loader:apply_config(#{logging_to_file => Val}),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
+
+handle(<<"GET">>, <<"ws-auth">>, Req0, State) ->
+    reply_json(200, config_loader:get(ws_auth, false), Req0, State);
+
+handle(<<"PUT">>, <<"ws-auth">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Val = jiffy:decode(Body),
+    config_loader:apply_config(#{ws_auth => Val}),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
+
+%%====================================================================
+%% Quota
+%%====================================================================
+
+handle(<<"GET">>, <<"quota-exceeded/switch-project">>, Req0, State) ->
+    reply_json(200, config_loader:get(quota_switch_project, false), Req0, State);
+
+handle(<<"PUT">>, <<"quota-exceeded/switch-project">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Val = jiffy:decode(Body),
+    config_loader:apply_config(#{quota_switch_project => Val}),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
+
+%%====================================================================
+%% Provider keys
+%%====================================================================
+
+handle(<<"GET">>, <<"gemini-api-key">>, Req0, State) ->
+    reply_json(200, config_loader:get(gemini_keys, []), Req0, State);
+
+handle(<<"GET">>, <<"claude-api-key">>, Req0, State) ->
+    reply_json(200, config_loader:get(claude_keys, []), Req0, State);
+
+handle(<<"GET">>, <<"codex-api-key">>, Req0, State) ->
+    reply_json(200, config_loader:get(codex_keys, []), Req0, State);
+
+handle(<<"GET">>, <<"openai-compatibility">>, Req0, State) ->
+    reply_json(200, config_loader:get(openai_compat, []), Req0, State);
+
+handle(<<"GET">>, <<"vertex-api-key">>, Req0, State) ->
+    reply_json(200, config_loader:get(vertex_keys, []), Req0, State);
+
+%%====================================================================
+%% Vertex import
+%%====================================================================
+
+handle(<<"POST">>, <<"vertex/import">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Data = jiffy:decode(Body, [return_maps]),
+    File = maps:get(<<"file">>, Data, <<>>),
+    Prefix = maps:get(<<"prefix">>, Data, <<>>),
+    case vertex_import:import(File, Prefix) of
+        ok -> reply_json(200, #{<<"ok">> => true}, Req1, State);
+        {error, Reason} ->
+            reply_json(400, #{<<"error">> => iolist_to_binary(io_lib:format("~p", [Reason]))},
+                       Req1, State)
+    end;
+
+%%====================================================================
+%% Amp
+%%====================================================================
+
+handle(<<"GET">>, <<"ampcode/model-mappings">>, Req0, State) ->
+    Mappings = amp_config:get_model_mappings(),
+    reply_json(200, Mappings, Req0, State);
+
+handle(<<"PUT">>, <<"ampcode/model-mappings">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Mappings = jiffy:decode(Body, [return_maps]),
+    config_loader:apply_config(#{ampcode => #{model_mappings => Mappings}}),
+    gen_server:cast(amp_config, reload),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
+
+%%====================================================================
+%% Latest version
+%%====================================================================
+
+handle(<<"GET">>, <<"latest-version">>, Req0, State) ->
+    reply_json(200, #{<<"version">> => <<"0.1.0">>}, Req0, State);
+
+%%====================================================================
 %% Fallback
 %%====================================================================
 
