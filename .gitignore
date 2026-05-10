@@ -1,0 +1,12 @@
+_build/
+deps/
+*.o
+*.beam
+*.plt
+erl_crash.dump
+rebar.lock
+.rebar3/
+*.swp
+*.swo
+*~
+.DS_Store

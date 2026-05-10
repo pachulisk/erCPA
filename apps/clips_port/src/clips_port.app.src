@@ -1,0 +1,11 @@
+{application, clips_port, [
+    {description, "CLIPS rule engine port program"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {applications, [
+        kernel,
+        stdlib
+    ]},
+    {env, []},
+    {modules, []}
+]}.

@@ -1,0 +1,17 @@
+{
+  "type": "response.create",
+  "model": "gpt-4",
+  "instructions": "You are a helpful coding assistant.",
+  "input": [
+    {
+      "type": "message",
+      "role": "user",
+      "content": [
+        {"type": "input_text", "text": "Write a hello world in Erlang"}
+      ]
+    }
+  ],
+  "tools": [],
+  "max_output_tokens": 2048,
+  "temperature": 0.7
+}

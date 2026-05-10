@@ -1,0 +1,7 @@
+{
+  "type": "tool_progress",
+  "tool_use_id": "toolu_01ABC123",
+  "tool_name": "bash",
+  "session_id": "sess_01XYZ789",
+  "elapsed_time_seconds": 5.2
+}

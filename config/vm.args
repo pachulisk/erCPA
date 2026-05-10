@@ -1,0 +1,18 @@
+## Name and cookie for distributed Erlang
+-name cli_proxy@127.0.0.1
+-setcookie cli_proxy_secret
+
+## Process and port limits
++P 1048576
++Q 65536
+
+## Scheduler
++S 4:4
++SDcpu 50
+
+## Memory
++MBas aobf
++MBlmbcs 512
+
+## Kernel polling
++K true

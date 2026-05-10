@@ -1,0 +1,22 @@
+{application, cli_proxy, [
+    {description, "Erlang + CLIPS reimplementation of CLIProxyAPI"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {mod, {cli_proxy_app, []}},
+    {applications, [
+        kernel,
+        stdlib,
+        crypto,
+        ssl,
+        inets,
+        cowboy,
+        gun,
+        jiffy,
+        hackney,
+        fs
+    ]},
+    {env, []},
+    {modules, []},
+    {licenses, ["MIT"]},
+    {links, [{"GitHub", "https://github.com/pachulisk/erCPA"}]}
+]}.

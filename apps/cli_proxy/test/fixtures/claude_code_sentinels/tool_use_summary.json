@@ -1,0 +1,5 @@
+{
+  "type": "tool_use_summary",
+  "summary": "Edited the file src/main.erl and ran tests successfully.",
+  "preceding_tool_use_ids": ["toolu_01ABC123", "toolu_02DEF456"]
+}

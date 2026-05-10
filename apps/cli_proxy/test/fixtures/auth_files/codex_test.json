@@ -1,0 +1,8 @@
+{
+  "access_token": "codex-test-token-789",
+  "refresh_token": "codex-refresh-012",
+  "id_token": "eyJhbGciOiJSUzI1NiJ9.codex-test",
+  "token_type": "Bearer",
+  "expires_in": 86400,
+  "type": "codex"
+}

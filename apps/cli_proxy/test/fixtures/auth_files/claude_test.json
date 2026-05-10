@@ -1,0 +1,9 @@
+{
+  "id_token": "eyJhbGciOiJSUzI1NiJ9.test",
+  "access_token": "sk-ant-test-token-123",
+  "refresh_token": "rt-test-refresh-456",
+  "email": "test@example.com",
+  "type": "claude",
+  "expired": "2099-01-01T00:00:00Z",
+  "last_refresh": "2024-01-01T00:00:00Z"
+}

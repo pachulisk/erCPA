@@ -1,0 +1,14 @@
+{
+  "model": "claude-3-sonnet",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "What is in this image?"},
+        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQSkZJRg==", "detail": "auto"}}
+      ]
+    }
+  ],
+  "max_tokens": 1024,
+  "stream": false
+}

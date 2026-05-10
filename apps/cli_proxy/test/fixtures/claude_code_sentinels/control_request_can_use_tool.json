@@ -1,0 +1,12 @@
+{
+  "type": "control_request",
+  "request_id": "req_01GHI789",
+  "request": {
+    "subtype": "can_use_tool",
+    "tool_name": "bash",
+    "tool_use_id": "toolu_03JKL012",
+    "input": {
+      "command": "rm -rf /tmp/test"
+    }
+  }
+}
