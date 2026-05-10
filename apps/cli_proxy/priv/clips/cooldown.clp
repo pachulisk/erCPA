@@ -24,7 +24,7 @@
   =>
   (retract ?r)
   (retract ?ms)
-  (bind ?cooldown (min (* (** 2 ?bl) 1) 1800))
+  (bind ?cooldown (integer (min (* (** 2 ?bl) 1) 1800)))
   (assert (model-state (credential-id ?cid) (model ?m)
                         (available no)
                         (cooldown-until (+ ?now ?cooldown))
@@ -53,7 +53,7 @@
   =>
   (retract ?r)
   (retract ?ms)
-  (bind ?cooldown (min (* (** 2 ?bl) 1) 60))
+  (bind ?cooldown (integer (min (* (** 2 ?bl) 1) 60)))
   (assert (model-state (credential-id ?cid) (model ?m)
                         (available no)
                         (cooldown-until (+ ?now ?cooldown))
