@@ -57,11 +57,31 @@ init([]) ->
         modules => [credential_sup]
     },
 
+    ModelRegistry = #{
+        id => model_registry,
+        start => {model_registry, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [model_registry]
+    },
+
+    Conductor = #{
+        id => conductor,
+        start => {conductor, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [conductor]
+    },
+
     ChildSpecs = [
         ConfigLoader,
         SignatureCache,
         TranslatorRegistry,
-        CredentialSup
+        ModelRegistry,
+        CredentialSup,
+        Conductor
     ],
 
     {ok, {SupFlags, ChildSpecs}}.
