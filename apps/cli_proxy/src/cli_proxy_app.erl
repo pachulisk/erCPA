@@ -30,7 +30,10 @@ start(_StartType, _StartArgs) ->
 
             %% Codex direct aliases
             {"/backend-api/codex/responses", responses_handler, []},
-            {"/backend-api/codex/responses/compact", responses_compact_handler, []}
+            {"/backend-api/codex/responses/compact", responses_compact_handler, []},
+
+            %% Management API
+            {"/v0/management/[...]", management_handler, []}
         ]}
     ]),
     {ok, _} = cowboy:start_clear(http_listener,
