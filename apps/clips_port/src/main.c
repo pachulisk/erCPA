@@ -17,6 +17,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include "clips_bridge.h"
 
 #define MAX_LINE 1048576
@@ -74,7 +76,15 @@ static void handle_line(const char *line) {
 
     } else if (strstr(line, "\"op\":\"load\"")) {
         if (json_get_string(line, "file", buf1, sizeof(buf1))) {
+            /* Suppress CLIPS output during load to avoid corrupting protocol */
+            int saved_stdout = dup(1);
+            int devnull = open("/dev/null", O_WRONLY);
+            dup2(devnull, 1);
+            close(devnull);
             int result = clips_bridge_load(g_env, buf1);
+            /* Restore stdout */
+            dup2(saved_stdout, 1);
+            close(saved_stdout);
             if (result == 0) {
                 send_response("{\"ok\":true}");
             } else {

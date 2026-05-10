@@ -4,7 +4,6 @@ deps/
 *.beam
 *.plt
 erl_crash.dump
-rebar.lock
 .rebar3/
 *.swp
 *.swo
