@@ -55,4 +55,9 @@ register_translators() ->
     translator_openai_claude:register(),
     translator_claude_openai:register(),
     translator_openai_gemini:register(),
-    translator_gemini_claude:register().
+    translator_gemini_openai:register(),
+    translator_gemini_claude:register(),
+    translator_claude_gemini:register(),
+    translator_codex_claude:register(),
+    translator_codex_openai:register(),
+    translator_openai_responses_claude:register().
