@@ -12,7 +12,12 @@
 authenticate(Req) ->
     Key = extract_key(Req),
     case Key of
-        <<>> -> {error, no_credentials};
+        <<>> ->
+            %% No key provided — check if any keys are configured
+            case has_configured_keys() of
+                false -> {ok, <<"anonymous">>};  %% No keys = allow all
+                true -> {error, no_credentials}
+            end;
         _ -> validate_key(Key)
     end.
 
@@ -57,4 +62,10 @@ extract_key(Req) ->
             cowboy_req:header(<<"x-api-key">>, Req, <<>>);
         _ ->
             <<>>
+    end.
+
+has_configured_keys() ->
+    case ets:info(?API_KEYS_TABLE) of
+        undefined -> false;
+        _ -> ets:info(?API_KEYS_TABLE, size) > 0
     end.
