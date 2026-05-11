@@ -13,7 +13,9 @@
     is_model_available/1,
     is_model_available/2,
     get_model_info/1,
-    set_quota_exceeded/2
+    set_quota_exceeded/2,
+    resolve_alias/1,
+    is_excluded/2
 ]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2]).
@@ -80,6 +82,34 @@ get_model_info(ModelId) ->
 set_quota_exceeded(ClientId, ModelId) ->
     gen_server:cast(?MODULE, {quota_exceeded, ClientId, ModelId}).
 
+%% Resolve model alias to real model name
+-spec resolve_alias(binary()) -> binary().
+resolve_alias(ModelId) ->
+    Aliases = config_loader:get(model_aliases, #{}),
+    maps:get(ModelId, Aliases, ModelId).
+
+%% Check if model is excluded for a given channel/provider
+-spec is_excluded(binary(), atom()) -> boolean().
+is_excluded(ModelId, Provider) ->
+    Exclusions = config_loader:get(model_exclusions, #{}),
+    ProviderBin = atom_to_binary(Provider, utf8),
+    ExcludedList = maps:get(ProviderBin, Exclusions, []),
+    lists:any(fun(Pattern) ->
+        case Pattern of
+            <<"*">> -> true;
+            _ ->
+                case binary:match(Pattern, <<"*">>) of
+                    nomatch -> Pattern =:= ModelId;
+                    _ ->
+                        RE = binary:replace(Pattern, <<"*">>, <<".*">>, [global]),
+                        case re:run(ModelId, RE) of
+                            {match, _} -> true;
+                            nomatch -> false
+                        end
+                end
+        end
+    end, ExcludedList).
+
 %%====================================================================
 %% gen_server callbacks
 %%====================================================================
@@ -140,7 +170,7 @@ handle_info(_Info, State) ->
 %% Internal
 %%====================================================================
 
-register_model(ClientId, Provider, ModelId, ModelInfo) ->
+register_model(_ClientId, Provider, ModelId, ModelInfo) ->
     case ets:lookup(?MODELS_TAB, ModelId) of
         [#model_reg{total_count = C, providers = P} = Reg] ->
             ProvCount = maps:get(Provider, P, 0),

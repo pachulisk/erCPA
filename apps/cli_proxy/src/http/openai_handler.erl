@@ -46,15 +46,18 @@ handle_authenticated(Req0, State) ->
     {ok, Body, Req1} = cowboy_req:read_body(Req0),
     case jiffy:decode(Body, [return_maps]) of
         Request when is_map(Request) ->
-            Model = maps:get(<<"model">>, Request, <<>>),
+            RawModel = maps:get(<<"model">>, Request, <<>>),
+            Model = model_registry:resolve_alias(RawModel),
             Stream = maps:get(<<"stream">>, Request, false),
             case Model of
                 <<>> ->
                     reply_error(Req1, 400, <<"model is required">>, State);
                 _ ->
+                    %% Update request with resolved model name
+                    Request1 = Request#{<<"model">> => Model},
                     case Stream of
-                        true -> handle_stream(Model, Request, Req1, State);
-                        false -> handle_nonstream(Model, Request, Req1, State)
+                        true -> handle_stream(Model, Request1, Req1, State);
+                        false -> handle_nonstream(Model, Request1, Req1, State)
                     end
             end;
         _ ->
