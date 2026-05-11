@@ -104,6 +104,7 @@ init([Config]) ->
         backoff_base_ms = maps:get(backoff_base_ms, Config, 5000)
     },
     assert_to_clips(Data),
+    register_models(Data),
     {ok, ready, Data}.
 
 %%====================================================================
@@ -263,9 +264,13 @@ disabled(_EventType, _Event, _Data) ->
 %%====================================================================
 
 terminate(_Reason, _State, #data{id = Id}) ->
+    case whereis(model_registry) of
+        undefined -> ok;
+        _ -> model_registry:unregister_client(Id)
+    end,
     case whereis(clips_engine) of
         undefined -> ok;
-        _Pid -> clips_engine:retract({credential, Id})
+        _ -> clips_engine:retract({credential, Id})
     end,
     ok.
 
@@ -275,6 +280,20 @@ terminate(_Reason, _State, #data{id = Id}) ->
 
 proc_name(Id) ->
     binary_to_atom(<<"cred_", Id/binary>>, utf8).
+
+register_models(#data{id = Id, provider = Provider, metadata = Meta}) ->
+    case whereis(model_registry) of
+        undefined -> ok;
+        _Pid ->
+            case maps:get(<<"models">>, Meta, undefined) of
+                undefined -> ok;
+                Models when is_list(Models) ->
+                    ProviderBin = atom_to_binary(Provider, utf8),
+                    ModelInfos = [#{<<"id">> => M, <<"provider">> => ProviderBin} || M <- Models],
+                    model_registry:register_client(Id, ProviderBin, ModelInfos);
+                _ -> ok
+            end
+    end.
 
 assert_to_clips(#data{id = Id, provider = Provider, metadata = Meta}) ->
     case whereis(clips_engine) of
