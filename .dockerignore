@@ -1,0 +1,11 @@
+_build/
+.git/
+.github/
+.claude/
+docs/
+*.crashdump
+erl_crash.dump
+.rebar3/
+.DS_Store
+*.swp
+*.beam

@@ -1,0 +1,7 @@
+task_id,title,file,severity,status,verification
+D1,升级 Dockerfile 基础镜像到 OTP 28,Dockerfile,HIGH,done,grep 'erlang:28' Dockerfile
+D2,Dockerfile 中下载 CLIPS 源码并编译 clips_port,Dockerfile,CRITICAL,done,docker compose build 不报错
+D3,调整 clips_port Makefile 兼容 Docker 构建路径,apps/clips_port/Makefile,CRITICAL,done,Makefile 已支持 CLIPS_SRC 参数覆盖
+D4,创建 .dockerignore,.dockerignore,MEDIUM,done,文件存在且排除 _build/ .git/
+D5,docker-compose 添加 healthcheck,docker-compose.yml,LOW,done,docker compose up 后 docker ps 显示 healthy
+D6,验证完整 Docker 部署,N/A,CRITICAL,pending,Docker daemon 未运行 — 启动后执行 docker compose up && curl localhost:8317/healthz

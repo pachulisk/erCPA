@@ -1,19 +1,20 @@
-version: '3.8'
-
 services:
   cli-proxy:
     build: .
     ports:
       - "8317:8317"
-      - "8085:8085"
-      - "1455:1455"
-      - "54545:54545"
     volumes:
       - ./config:/opt/cli_proxy/config:ro
       - cli_proxy_data:/root/.cli-proxy-api
     environment:
       - DEPLOY=${DEPLOY:-local}
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8317/healthz"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
 
 volumes:
   cli_proxy_data:
