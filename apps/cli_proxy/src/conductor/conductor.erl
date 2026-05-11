@@ -135,14 +135,14 @@ execute_with_retry(SourceFormat, Model, Request, Opts, Stream, Retries, MaxCreds
             %% Execute via provider executor
             case do_execute(Provider, AuthId, FinalReq, Stream, Opts) of
                 {ok, Response} ->
-                    %% Mark success
                     mark_credential_result(AuthId, Model, 200),
-                    %% Translate response back to source format
+                    bind_session(SessionId, AuthId),
                     TranslatedResp = translator_registry:translate_nonstream(
                         SourceFormat, Provider, Response),
                     {ok, TranslatedResp};
                 {ok, stream, StreamPid} ->
                     mark_credential_result(AuthId, Model, 200),
+                    bind_session(SessionId, AuthId),
                     {ok, stream, StreamPid};
                 {error, Status, _Body} when Status =:= 408;
                                             Status =:= 500;
@@ -210,3 +210,19 @@ get_provider(CredId) ->
 
 generate_request_id() ->
     <<"req_", (integer_to_binary(erlang:unique_integer([positive])))/binary>>.
+
+bind_session(<<>>, _AuthId) -> ok;
+bind_session(undefined, _AuthId) -> ok;
+bind_session(SessionId, AuthId) ->
+    case whereis(clips_engine) of
+        undefined -> ok;
+        _ ->
+            TTL = config_loader:get(session_affinity_ttl, 3600),
+            Now = erlang:system_time(second),
+            clips_engine:assert({session_binding, #{
+                session_id => SessionId,
+                credential_id => AuthId,
+                bound_at => Now,
+                ttl => TTL
+            }})
+    end.
