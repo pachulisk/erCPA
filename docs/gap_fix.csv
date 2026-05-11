@@ -1,0 +1,16 @@
+task_id,issue,title,priority,status,files
+G01,#8,HTTPS/TLS 支持,HIGH,todo,cli_proxy_app.erl + sys.config
+G02,#9,Management API 完整度扩展,HIGH,todo,management_handler.erl
+G03,#10,Session affinity 粘性路由,HIGH,todo,conductor.erl + selection.clp + sys.config
+G04,#11,高级 Payload Rules (default/override/filter),HIGH,todo,payload_rules.erl + management_handler.erl
+G05,#12,全局模型别名 + 排除,HIGH,todo,model_registry.erl + management_handler.erl
+G06,#13,Thinking 签名缓存,MEDIUM,todo,signature_cache.erl + thinking.erl
+G07,#14,Image Generation 端点,MEDIUM,todo,images_handler.erl(new) + cli_proxy_app.erl
+G08,#15,文件日志轮转集成,MEDIUM,todo,request_logger.erl + log_rotator.erl + cli_proxy_sup.erl
+G09,#16,多后端 Token Store (PG/Git/S3),MEDIUM,todo,pg_store.erl + git_store.erl + s3_store.erl(new)
+G10,#17,WebSocket Relay 中继,MEDIUM,todo,ws_relay_handler.erl(new) + cli_proxy_app.erl
+G11,#18,每凭证 proxy/headers 定制,MEDIUM,todo,all executors + conductor.erl
+G12,#19,Home 节点 OAuth 刷新,MEDIUM,todo,credential_proc.erl + home_client.erl
+G13,#20,Quota 降级链,LOW,todo,conductor.erl + config
+G14,#21,Legacy /v1/completions + count_tokens,LOW,todo,completions_handler.erl + count_tokens_handler.erl(new)
+G15,#22,常量时间密码比较,LOW,todo,access_control.erl
