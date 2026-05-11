@@ -3,6 +3,21 @@
 ;;; Based on DESIGN.md Thinking normalization rules section
 ;;; ============================================================
 
+;;; Helper functions for thinking mode conversion
+
+(deffunction level-to-budget (?level ?model)
+  "Convert a thinking level string to a budget integer"
+  (if (eq ?level "high") then 16000
+   else (if (eq ?level "medium") then 8000
+   else (if (eq ?level "low") then 4000
+   else 8000))))
+
+(deffunction budget-to-level (?budget ?model)
+  "Convert a budget integer to the closest thinking level"
+  (if (>= ?budget 12000) then "high"
+   else (if (>= ?budget 6000) then "medium"
+   else "low")))
+
 (defrule clamp-budget-to-max
   "Budget exceeds model maximum"
   (declare (salience 80))
