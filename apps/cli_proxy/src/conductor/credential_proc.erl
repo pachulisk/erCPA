@@ -12,6 +12,7 @@
     disable/1,
     enable/1,
     get_metadata/2,
+    get_auth/1,
     stop/1
 ]).
 
@@ -74,6 +75,13 @@ get_metadata(Pid, Key) when is_pid(Pid) ->
 get_metadata(Id, Key) when is_binary(Id) ->
     gen_statem:call(proc_name(Id), {get_metadata, Key}).
 
+-spec get_auth(binary()) -> {ok, map()} | {error, not_found}.
+get_auth(Id) ->
+    case whereis(proc_name(Id)) of
+        undefined -> {error, not_found};
+        Pid -> {ok, gen_statem:call(Pid, get_auth)}
+    end.
+
 -spec stop(pid()) -> ok.
 stop(Pid) ->
     gen_statem:stop(Pid).
@@ -95,6 +103,7 @@ init([Config]) ->
         refresh_module = maps:get(refresh_module, Config, undefined),
         backoff_base_ms = maps:get(backoff_base_ms, Config, 5000)
     },
+    assert_to_clips(Data),
     {ok, ready, Data}.
 
 %%====================================================================
@@ -126,6 +135,9 @@ ready({call, From}, {mark_result, Model, StatusCode}, Data) ->
 ready({call, From}, {get_metadata, Key}, Data) ->
     Val = maps:get(Key, Data#data.metadata, undefined),
     {keep_state, Data, [{reply, From, Val}]};
+
+ready({call, From}, get_auth, Data) ->
+    {keep_state, Data, [{reply, From, Data#data.metadata}]};
 
 ready(cast, disable, Data) ->
     {next_state, disabled, Data};
@@ -173,6 +185,9 @@ refreshing({call, From}, {mark_result, Model, StatusCode}, Data) ->
     {_NewState, Data1} = handle_mark_result(Model, StatusCode, Data),
     {keep_state, Data1, [{reply, From, ok}]};
 
+refreshing({call, From}, get_auth, Data) ->
+    {keep_state, Data, [{reply, From, Data#data.metadata}]};
+
 refreshing(cast, disable, Data) ->
     {next_state, disabled, Data};
 
@@ -208,6 +223,9 @@ cooldown({call, From}, {get_metadata, Key}, Data) ->
     Val = maps:get(Key, Data#data.metadata, undefined),
     {keep_state, Data, [{reply, From, Val}]};
 
+cooldown({call, From}, get_auth, Data) ->
+    {keep_state, Data, [{reply, From, Data#data.metadata}]};
+
 cooldown(cast, disable, Data) ->
     {next_state, disabled, Data};
 
@@ -231,6 +249,9 @@ disabled({call, From}, {get_metadata, Key}, Data) ->
     Val = maps:get(Key, Data#data.metadata, undefined),
     {keep_state_and_data, [{reply, From, Val}]};
 
+disabled({call, From}, get_auth, Data) ->
+    {keep_state, Data, [{reply, From, Data#data.metadata}]};
+
 disabled(cast, enable, Data) ->
     {next_state, ready, Data#data{backoff_level = 0}};
 
@@ -241,7 +262,11 @@ disabled(_EventType, _Event, _Data) ->
 %% Terminate
 %%====================================================================
 
-terminate(_Reason, _State, _Data) ->
+terminate(_Reason, _State, #data{id = Id}) ->
+    case whereis(clips_engine) of
+        undefined -> ok;
+        _Pid -> clips_engine:retract({credential, Id})
+    end,
     ok.
 
 %%====================================================================
@@ -250,6 +275,22 @@ terminate(_Reason, _State, _Data) ->
 
 proc_name(Id) ->
     binary_to_atom(<<"cred_", Id/binary>>, utf8).
+
+assert_to_clips(#data{id = Id, provider = Provider, metadata = Meta}) ->
+    case whereis(clips_engine) of
+        undefined -> ok;
+        _Pid ->
+            clips_engine:assert({credential, #{
+                id => Id,
+                provider => atom_to_binary(Provider, utf8),
+                priority => maps:get(<<"priority">>, Meta, 0),
+                status => active,
+                cooldown_until => 0,
+                backoff_level => 0,
+                prefix => maps:get(<<"prefix">>, Meta, <<>>),
+                has_websocket => no
+            }})
+    end.
 
 check_model_status(Model, Data) ->
     %% Strip thinking suffix for model state lookup

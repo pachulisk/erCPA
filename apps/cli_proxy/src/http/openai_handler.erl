@@ -78,10 +78,9 @@ handle_stream(Model, Request, Req0, State) ->
             cowboy_req:stream_body(sse_parser:format_done(), fin, Req1),
             {ok, Req1, State};
         {ok, stream, _StreamPid} ->
-            %% TODO: wire actual streaming from executor process
             Headers = sse_headers(),
             Req1 = cowboy_req:stream_reply(200, Headers, Req0),
-            cowboy_req:stream_body(sse_parser:format_done(), fin, Req1),
+            stream_forward_loop(Req1),
             {ok, Req1, State};
         {error, Status, ErrBody} when is_binary(ErrBody) ->
             Req = cowboy_req:reply(Status, json_headers(), ErrBody, Req0),
@@ -93,6 +92,19 @@ handle_stream(Model, Request, Req0, State) ->
 %%====================================================================
 %% Internal
 %%====================================================================
+
+stream_forward_loop(Req) ->
+    receive
+        {stream_chunk, Data} ->
+            cowboy_req:stream_body(Data, nofin, Req),
+            stream_forward_loop(Req);
+        stream_done ->
+            cowboy_req:stream_body(sse_parser:format_done(), fin, Req);
+        {stream_error, _Status, _Body} ->
+            cowboy_req:stream_body(sse_parser:format_done(), fin, Req)
+    after 120000 ->
+        cowboy_req:stream_body(sse_parser:format_done(), fin, Req)
+    end.
 
 reply_error(Req0, Status, Message, State) ->
     ErrType = case Status of

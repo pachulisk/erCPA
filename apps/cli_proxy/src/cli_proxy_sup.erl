@@ -75,13 +75,45 @@ init([]) ->
         modules => [conductor]
     },
 
+    ClipsEngine = #{
+        id => clips_engine,
+        start => {clips_engine, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [clips_engine]
+    },
+
+    Executors = [#{
+        id => Mod,
+        start => {Mod, start_link, [#{}]},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [Mod]
+    } || Mod <- [claude_executor, openai_compat_executor, gemini_executor,
+                 codex_executor, vertex_executor, aistudio_executor,
+                 antigravity_executor, kimi_executor]],
+
+    ConfigWatcher = #{
+        id => config_watcher,
+        start => {config_watcher, start_link, [auth_dir()]},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [config_watcher]
+    },
+
     ChildSpecs = [
         ConfigLoader,
         SignatureCache,
         TranslatorRegistry,
-        ModelRegistry,
+        ClipsEngine,
+        ModelRegistry
+    ] ++ Executors ++ [
         CredentialSup,
-        Conductor
+        Conductor,
+        ConfigWatcher
     ],
 
     {ok, {SupFlags, ChildSpecs}}.
@@ -94,3 +126,13 @@ load_initial_config() ->
     %% Load from application env (sys.config)
     Env = application:get_all_env(cli_proxy),
     maps:from_list(Env).
+
+auth_dir() ->
+    Dir = application:get_env(cli_proxy, auth_dir, "~/.cli-proxy-api/"),
+    expand_home(Dir).
+
+expand_home("~/" ++ Rest) ->
+    Home = os:getenv("HOME", "/tmp"),
+    filename:join(Home, Rest);
+expand_home(Path) ->
+    Path.

@@ -32,7 +32,7 @@ handle_call({execute, _AuthId, Auth, Request, Opts}, From, State) ->
     {noreply, State};
 
 handle_call({execute_stream, _AuthId, Auth, Request, Opts}, From, State) ->
-    Caller = element(1, From),
+    Caller = maps:get(caller, Opts, element(1, From)),
     spawn_link(fun() ->
         Result = do_execute_stream(Auth, Request, Opts, State, Caller),
         gen_server:reply(From, Result)

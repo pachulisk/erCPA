@@ -77,14 +77,25 @@ select_credential(Model, _Opts, SessionId) ->
 init([]) ->
     {ok, #state{}}.
 
-handle_call({execute, SourceFormat, Model, Request, Opts}, _From, State) ->
+handle_call({execute, SourceFormat, Model, Request, Opts}, From, State) ->
     MaxRetries = config_loader:get(request_retry, 3),
     MaxCreds = config_loader:get(max_retry_credentials, 0),
     Stream = maps:get(<<"stream">>, Request, false),
 
-    Result = execute_with_retry(SourceFormat, Model, Request, Opts,
-                                Stream, MaxRetries, MaxCreds, 0),
-    {reply, Result, State};
+    case Stream of
+        true ->
+            Caller = element(1, From),
+            spawn_link(fun() ->
+                Result = execute_with_retry(SourceFormat, Model, Request,
+                    Opts#{caller => Caller}, true, MaxRetries, MaxCreds, 0),
+                gen_server:reply(From, Result)
+            end),
+            {noreply, State};
+        false ->
+            Result = execute_with_retry(SourceFormat, Model, Request, Opts,
+                                        false, MaxRetries, MaxCreds, 0),
+            {reply, Result, State}
+    end;
 
 handle_call(_Request, _From, State) ->
     {reply, {error, unknown}, State}.
@@ -128,16 +139,16 @@ execute_with_retry(SourceFormat, Model, Request, Opts, Stream, Retries, MaxCreds
                     mark_credential_result(AuthId, Model, 200),
                     %% Translate response back to source format
                     TranslatedResp = translator_registry:translate_nonstream(
-                        Provider, SourceFormat, Response),
+                        SourceFormat, Provider, Response),
                     {ok, TranslatedResp};
                 {ok, stream, StreamPid} ->
                     mark_credential_result(AuthId, Model, 200),
                     {ok, stream, StreamPid};
-                {error, Status, Body} when Status =:= 408;
-                                           Status =:= 500;
-                                           Status =:= 502;
-                                           Status =:= 503;
-                                           Status =:= 504 ->
+                {error, Status, _Body} when Status =:= 408;
+                                            Status =:= 500;
+                                            Status =:= 502;
+                                            Status =:= 503;
+                                            Status =:= 504 ->
                     %% Retriable — mark failure, retry
                     mark_credential_result(AuthId, Model, Status),
                     execute_with_retry(SourceFormat, Model, Request, Opts,
@@ -153,13 +164,27 @@ execute_with_retry(SourceFormat, Model, Request, Opts, Stream, Retries, MaxCreds
 %% Internal - Execution dispatch
 %%====================================================================
 
-do_execute(_Provider, _AuthId, _Request, _Stream, _Opts) ->
-    %% TODO: Dispatch to provider executor gen_server
-    %% For now return a placeholder
-    {ok, #{<<"content">> => [#{<<"type">> => <<"text">>,
-                               <<"text">> => <<"[conductor: executor not yet wired]">>}],
-           <<"stop_reason">> => <<"end_turn">>,
-           <<"usage">> => #{<<"input_tokens">> => 0, <<"output_tokens">> => 0}}}.
+do_execute(Provider, AuthId, Request, Stream, Opts) ->
+    case credential_proc:get_auth(AuthId) of
+        {error, not_found} ->
+            {error, 503, <<"credential not found">>};
+        {ok, Auth} ->
+            Mod = executor_module(Provider),
+            case Stream of
+                true -> Mod:execute_stream(AuthId, Auth, Request, Opts);
+                false -> Mod:execute(AuthId, Auth, Request, Opts)
+            end
+    end.
+
+executor_module(claude) -> claude_executor;
+executor_module(openai_compat) -> openai_compat_executor;
+executor_module(gemini) -> gemini_executor;
+executor_module(codex) -> codex_executor;
+executor_module(vertex) -> vertex_executor;
+executor_module(aistudio) -> aistudio_executor;
+executor_module(antigravity) -> antigravity_executor;
+executor_module(kimi) -> kimi_executor;
+executor_module(_) -> openai_compat_executor.
 
 %%====================================================================
 %% Internal - Helpers

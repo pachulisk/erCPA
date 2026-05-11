@@ -10,6 +10,9 @@ start(_StartType, _StartArgs) ->
     %% Register translators after registry is up
     register_translators(),
 
+    %% Load existing credentials from auth directory
+    load_existing_credentials(),
+
     %% Start Cowboy HTTP listener
     Port = application:get_env(cli_proxy, port, 8317),
     Dispatch = cowboy_router:compile([
@@ -67,3 +70,21 @@ register_translators() ->
     translator_codex_claude:register(),
     translator_codex_openai:register(),
     translator_openai_responses_claude:register().
+
+load_existing_credentials() ->
+    case file_store:load_all() of
+        {ok, Creds} ->
+            lists:foreach(fun(#{id := Id, provider := Provider, metadata := Meta} = C) ->
+                case maps:get(disabled, C, false) of
+                    true -> ok;
+                    false ->
+                        credential_sup:start_credential(#{
+                            id => Id,
+                            provider => Provider,
+                            metadata => Meta
+                        })
+                end
+            end, Creds);
+        {error, _} ->
+            ok
+    end.

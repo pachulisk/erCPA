@@ -18,11 +18,10 @@ init(Req0, State) ->
     end.
 
 handle_get(Req0, State) ->
-    %% TODO: Query model_registry for available models
-    %% For now return empty list
+    Models = model_registry:get_available_models(),
     Response = #{
         <<"object">> => <<"list">>,
-        <<"data">> => []
+        <<"data">> => Models
     },
     Req = cowboy_req:reply(200, json_headers(),
         jiffy:encode(Response), Req0),

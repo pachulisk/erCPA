@@ -1,0 +1,10 @@
+task_id,title,file,severity,status,description
+T1,clips_engine 加入 supervision tree,apps/cli_proxy/src/cli_proxy_sup.erl,CRITICAL,done,添加 ClipsEngine 子进程到 ChildSpecs（在 ModelRegistry 之前）
+T2,8个 executor 进程加入 supervision tree,apps/cli_proxy/src/cli_proxy_sup.erl,CRITICAL,done,添加 8 个 executor gen_server 为静态子进程
+T3,config_watcher 加入 supervision tree,apps/cli_proxy/src/cli_proxy_sup.erl,HIGH,done,添加 ConfigWatcher 子进程（在 Conductor 之后）
+T4,启动时加载已有凭证,apps/cli_proxy/src/cli_proxy_app.erl,HIGH,done,start/2 中调用 file_store:load_all() 并启动 credential_proc
+T5,credential_proc assert 到 CLIPS + get_auth,apps/cli_proxy/src/conductor/credential_proc.erl,CRITICAL,done,新增 get_auth/1 API；init 时 assert credential fact；terminate 时 retract
+T6,conductor do_execute 实现,apps/cli_proxy/src/conductor/conductor.erl,CRITICAL,done,替换 stub 为 executor dispatch + handle_call stream spawn
+T7,executor caller 从 Opts 读取,apps/cli_proxy/src/executor/*.erl,MEDIUM,done,8 个 executor 的 execute_stream handler 改读 Opts 中的 caller
+T8,openai_handler streaming bridge,apps/cli_proxy/src/http/openai_handler.erl,MEDIUM,done,实现 stream_forward_loop 接收 stream_chunk 并转发
+T9,models_handler 查询 model_registry,apps/cli_proxy/src/http/models_handler.erl,LOW,done,替换空列表为 model_registry:get_available_models()
