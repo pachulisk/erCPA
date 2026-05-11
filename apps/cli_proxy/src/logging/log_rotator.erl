@@ -46,5 +46,5 @@ prune_loop([], _Current, _Max) -> ok;
 prune_loop(_Files, Current, Max) when Current =< Max -> ok;
 prune_loop([File | Rest], Current, Max) ->
     Size = filelib:file_size(File),
-    file:delete(File),
+    _ = file:delete(File),
     prune_loop(Rest, Current - Size, Max).

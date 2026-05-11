@@ -42,12 +42,12 @@ handle_post(Req0, State) ->
                             Req = cowboy_req:reply(200, json_headers(),
                                 jiffy:encode(LegacyResp), Req1),
                             {ok, Req, State};
-                        {error, Status, ErrBody} when is_binary(ErrBody) ->
-                            Req = cowboy_req:reply(Status, json_headers(), ErrBody, Req1),
+                        {ok, stream, _} ->
+                            Req = cowboy_req:reply(501, json_headers(),
+                                jiffy:encode(#{<<"error">> => #{<<"message">> => <<"streaming not supported">>}}), Req1),
                             {ok, Req, State};
-                        {error, Status, ErrMsg} ->
-                            Req = cowboy_req:reply(Status, json_headers(),
-                                jiffy:encode(#{<<"error">> => #{<<"message">> => ErrMsg}}), Req1),
+                        {error, Status, ErrBody} ->
+                            Req = cowboy_req:reply(Status, json_headers(), ErrBody, Req1),
                             {ok, Req, State}
                     end;
                 _ ->

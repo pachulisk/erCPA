@@ -65,7 +65,7 @@ do_execute_stream(Auth, Request, State, Caller) ->
     Body = jiffy:encode(Request#{<<"stream">> => true}),
     case hackney:post(URL, Headers, Body, [{pool, State#state.pool}, {recv_timeout, 120000}, async]) of
         {ok, Ref} ->
-            stream_loop(Ref, Caller),
+            _ = stream_loop(Ref, Caller),
             {ok, self()};
         {error, R} ->
             {error, 502, iolist_to_binary(io_lib:format("~p", [R]))}

@@ -48,7 +48,7 @@ check(IP) ->
             end
     end.
 
--spec get_config() -> map().
+-spec get_config() -> #{rpm := integer()}.
 get_config() ->
     #{rpm => get_limit()}.
 
@@ -57,7 +57,7 @@ get_config() ->
 %%====================================================================
 
 init([]) ->
-    ets:new(?TAB, [named_table, public, set, {write_concurrency, true}]),
+    _ = ets:new(?TAB, [named_table, public, set, {write_concurrency, true}]),
     schedule_cleanup(),
     {ok, #{}}.
 

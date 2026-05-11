@@ -61,8 +61,8 @@ start(_StartType, _StartArgs) ->
     {ok, Pid}.
 
 stop(_State) ->
-    cowboy:stop_listener(http_listener),
-    cowboy:stop_listener(https_listener),
+    _ = cowboy:stop_listener(http_listener),
+    _ = cowboy:stop_listener(https_listener),
     ok.
 
 %% ====================================================================
@@ -97,19 +97,15 @@ register_translators() ->
     translator_openai_responses_claude:register().
 
 load_existing_credentials() ->
-    case file_store:load_all() of
-        {ok, Creds} ->
-            lists:foreach(fun(#{id := Id, provider := Provider, metadata := Meta} = C) ->
-                case maps:get(disabled, C, false) of
-                    true -> ok;
-                    false ->
-                        credential_sup:start_credential(#{
-                            id => Id,
-                            provider => Provider,
-                            metadata => Meta
-                        })
-                end
-            end, Creds);
-        {error, _} ->
-            ok
-    end.
+    {ok, Creds} = file_store:load_all(),
+    lists:foreach(fun(#{id := Id, provider := Provider, metadata := Meta} = C) ->
+        case maps:get(disabled, C, false) of
+            true -> ok;
+            false ->
+                credential_sup:start_credential(#{
+                    id => Id,
+                    provider => Provider,
+                    metadata => Meta
+                })
+        end
+    end, Creds).

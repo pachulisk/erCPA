@@ -35,7 +35,7 @@ unregister(StateToken) ->
     gen_server:cast(?MODULE, {unregister, StateToken}).
 
 init([]) ->
-    ets:new(?TABLE, [named_table, set, public, {read_concurrency, true}]),
+    _ = ets:new(?TABLE, [named_table, set, public, {read_concurrency, true}]),
     {ok, #{}}.
 
 handle_call({register, StateToken, Pid}, _From, State) ->

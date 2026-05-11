@@ -36,30 +36,29 @@ execute(SourceFormat, Model, Request, Opts) ->
     gen_server:call(?MODULE, {execute, SourceFormat, Model, Request, Opts}, 120000).
 
 %% Select a credential for a model (exposed for testing)
--spec select_credential(binary(), map()) -> {ok, binary(), atom()} | {error, term()}.
+-spec select_credential(binary(), map()) -> {ok, binary(), atom()} | {error, no_credential_available}.
 select_credential(Model, Opts) ->
     select_credential(Model, Opts, <<>>).
 
--spec select_credential(binary(), map(), binary()) -> {ok, binary(), atom()} | {error, term()}.
+-spec select_credential(binary(), map(), binary()) -> {ok, binary(), atom()} | {error, no_credential_available}.
 select_credential(Model, _Opts, SessionId) ->
     %% Use CLIPS for selection
     RequestId = generate_request_id(),
     Now = erlang:system_time(second),
-    NeedWS = false,  %% TODO: derive from opts
 
-    clips_engine:assert({select_request, #{
+    _ = clips_engine:assert({select_request, #{
         id => RequestId,
         model => Model,
         session_id => SessionId,
-        need_websocket => case NeedWS of true -> yes; false -> no end,
+        need_websocket => no,
         now => Now
     }}),
-    clips_engine:run(),
+    _ = clips_engine:run(),
 
     Result = clips_engine:query(selection_result, <<"request-id">>, RequestId),
 
     %% Clean up transient facts
-    clips_engine:retract({select_request, RequestId}),
+    _ = clips_engine:retract({select_request, RequestId}),
 
     case Result of
         {ok, #{<<"credential-id">> := CredId}} ->
@@ -136,13 +135,13 @@ execute_with_retry(SourceFormat, Model, Request, Opts, Stream, Retries, MaxCreds
             case do_execute(Provider, AuthId, FinalReq, Stream, Opts) of
                 {ok, Response} ->
                     mark_credential_result(AuthId, Model, 200),
-                    bind_session(SessionId, AuthId),
+                    _ = bind_session(SessionId, AuthId),
                     TranslatedResp = translator_registry:translate_nonstream(
                         SourceFormat, Provider, Response),
                     {ok, TranslatedResp};
                 {ok, stream, StreamPid} ->
                     mark_credential_result(AuthId, Model, 200),
-                    bind_session(SessionId, AuthId),
+                    _ = bind_session(SessionId, AuthId),
                     {ok, stream, StreamPid};
                 {error, Status, _Body} when Status =:= 408;
                                             Status =:= 500;
@@ -244,17 +243,17 @@ to_preview_model(Model) ->
     end.
 
 bind_session(<<>>, _AuthId) -> ok;
-bind_session(undefined, _AuthId) -> ok;
 bind_session(SessionId, AuthId) ->
     case whereis(clips_engine) of
         undefined -> ok;
         _ ->
             TTL = config_loader:get(session_affinity_ttl, 3600),
             Now = erlang:system_time(second),
-            clips_engine:assert({session_binding, #{
+            _ = clips_engine:assert({session_binding, #{
                 session_id => SessionId,
                 credential_id => AuthId,
                 bound_at => Now,
                 ttl => TTL
-            }})
+            }}),
+            ok
     end.

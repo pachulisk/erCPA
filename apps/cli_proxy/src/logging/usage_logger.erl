@@ -44,7 +44,7 @@ get_usage(CredentialId) ->
 %%====================================================================
 
 init([]) ->
-    ets:new(?TABLE, [named_table, set, public]),
+    _ = ets:new(?TABLE, [named_table, set, public]),
     {ok, #{}}.
 
 handle_call(get_usage, _From, State) ->
@@ -65,7 +65,7 @@ handle_call(_Req, _From, State) ->
     {reply, ok, State}.
 
 handle_cast({log, Record}, State) ->
-    do_log(Record),
+    _ = do_log(Record),
     {noreply, State};
 
 handle_cast({batch_log, Records}, State) ->
@@ -85,9 +85,9 @@ handle_info(_Info, State) ->
 do_log(#{credential_id := CredId, status := Status}) ->
     case Status >= 200 andalso Status < 300 of
         true ->
-            ets:update_counter(?TABLE, CredId, {2, 1}, {CredId, 0, 0});
+            _ = ets:update_counter(?TABLE, CredId, {2, 1}, {CredId, 0, 0});
         false ->
-            ets:update_counter(?TABLE, CredId, {3, 1}, {CredId, 0, 0})
+            _ = ets:update_counter(?TABLE, CredId, {3, 1}, {CredId, 0, 0})
     end;
 do_log(_) ->
     ok.

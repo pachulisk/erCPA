@@ -6,8 +6,9 @@
 -export([init/2]).
 
 init(Req0, State) ->
-    Code = cowboy_req:qs_val(<<"code">>, Req0, <<>>),
-    StateToken = cowboy_req:qs_val(<<"state">>, Req0, <<>>),
+    QS = cowboy_req:parse_qs(Req0),
+    Code = proplists:get_value(<<"code">>, QS, <<>>),
+    StateToken = proplists:get_value(<<"state">>, QS, <<>>),
 
     case StateToken of
         <<>> ->

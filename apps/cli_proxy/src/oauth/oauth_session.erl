@@ -261,17 +261,25 @@ build_auth_url(gemini, _Config, State, _Verifier) ->
 build_auth_url(_Provider, _Config, State, _Verifier) ->
     <<"https://example.com/oauth?state=", State/binary>>.
 
-exchange_code(_Provider, _Code, _Verifier, _Config) ->
-    %% TODO: Implement per-provider token exchange
-    {error, not_implemented}.
+exchange_code(Provider, Code, Verifier, Config) ->
+    Mod = provider_module(Provider),
+    Mod:exchange(Code, Verifier, Config).
 
-request_device_code(_Provider, _Config) ->
-    %% TODO: Implement device code request
-    {error, not_implemented}.
+request_device_code(Provider, Config) ->
+    Mod = provider_module(Provider),
+    Mod:request_device_code(Config).
 
-poll_device_token(_Provider, _DeviceCode, _Config) ->
-    %% TODO: Implement device token polling
-    {error, not_implemented}.
+poll_device_token(Provider, DeviceCode, Config) ->
+    Mod = provider_module(Provider),
+    Mod:poll_device_token(DeviceCode, Config).
+
+provider_module(claude) -> oauth_claude;
+provider_module(codex) -> oauth_codex;
+provider_module(codex_device) -> oauth_codex;
+provider_module(gemini) -> oauth_gemini;
+provider_module(kimi) -> oauth_kimi;
+provider_module(antigravity) -> oauth_antigravity;
+provider_module(_) -> oauth_claude.
 
 maybe_open_browser(URL, Config) ->
     case maps:get(no_browser, Config, false) of
@@ -279,8 +287,8 @@ maybe_open_browser(URL, Config) ->
         false ->
             %% Try to open browser
             case os:type() of
-                {unix, darwin} -> os:cmd("open " ++ binary_to_list(URL));
-                {unix, _} -> os:cmd("xdg-open " ++ binary_to_list(URL));
+                {unix, darwin} -> _ = os:cmd("open " ++ binary_to_list(URL)), ok;
+                {unix, _} -> _ = os:cmd("xdg-open " ++ binary_to_list(URL)), ok;
                 _ -> ok
             end
     end.

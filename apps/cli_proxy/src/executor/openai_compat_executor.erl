@@ -90,7 +90,7 @@ do_execute_stream(Auth, Request, State, Caller) ->
                                             {recv_timeout, 120000},
                                             async]) of
         {ok, ClientRef} ->
-            stream_loop(ClientRef, Caller),
+            _ = stream_loop(ClientRef, Caller),
             {ok, self()};
         {error, Reason} ->
             {error, 502, iolist_to_binary(io_lib:format("~p", [Reason]))}

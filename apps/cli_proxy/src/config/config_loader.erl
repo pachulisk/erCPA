@@ -62,8 +62,8 @@ update_api_keys(Keys) ->
 %%====================================================================
 
 init([InitialConfig]) ->
-    ets:new(?CONFIG_TABLE, [named_table, set, public, {read_concurrency, true}]),
-    ets:new(?API_KEYS_TABLE, [named_table, set, public, {read_concurrency, true}]),
+    _ = ets:new(?CONFIG_TABLE, [named_table, set, public, {read_concurrency, true}]),
+    _ = ets:new(?API_KEYS_TABLE, [named_table, set, public, {read_concurrency, true}]),
     do_apply_config(InitialConfig),
     {ok, #{config => InitialConfig}}.
 

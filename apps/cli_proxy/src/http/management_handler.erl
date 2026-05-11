@@ -95,7 +95,7 @@ handle(<<"POST">>, <<"auth-files">>, Req0, State) ->
     end;
 
 handle(<<"DELETE">>, <<"auth-files">>, Req0, State) ->
-    Id = cowboy_req:qs_val(<<"id">>, Req0, <<>>),
+    Id = proplists:get_value(<<"id">>, cowboy_req:parse_qs(Req0), <<>>),
     case auth_store:delete(Id) of
         ok -> reply_json(200, #{<<"ok">> => true}, Req0, State);
         {error, Reason} ->

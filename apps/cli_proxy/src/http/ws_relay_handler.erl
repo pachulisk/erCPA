@@ -6,11 +6,13 @@
 
 -export([init/2, websocket_init/1, websocket_handle/2, websocket_info/2, terminate/3]).
 
+-dialyzer({nowarn_function, [websocket_handle/2, websocket_init/1, init/2]}).
+
 -record(state, {
     upstream_pid :: pid() | undefined,
     provider :: atom(),
-    auth_id :: binary(),
-    auth :: map()
+    auth_id :: binary() | undefined,
+    auth :: map() | undefined
 }).
 
 init(Req, _Opts) ->

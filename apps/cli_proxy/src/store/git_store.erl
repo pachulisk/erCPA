@@ -10,7 +10,7 @@
 -define(LOCAL_DIR, "/tmp/ercpa_git_store").
 
 load_all() ->
-    ensure_cloned(),
+    _ = ensure_cloned(),
     Dir = ?LOCAL_DIR,
     Files = filelib:wildcard(filename:join(Dir, "*.json")),
     Creds = lists:filtermap(fun(Path) ->
@@ -35,42 +35,42 @@ load_all() ->
     {ok, Creds}.
 
 save(Provider, TokenData) ->
-    ensure_cloned(),
+    _ = ensure_cloned(),
     Id = maps:get(<<"id">>, TokenData, generate_id(Provider)),
     Filename = <<(atom_to_binary(Provider, utf8))/binary, "-", Id/binary, ".json">>,
     Path = filename:join(?LOCAL_DIR, binary_to_list(Filename)),
     Data = TokenData#{<<"type">> => atom_to_binary(Provider, utf8)},
     ok = file:write_file(Path, jiffy:encode(Data, [pretty])),
-    git_commit_push("Add credential " ++ binary_to_list(Id)),
+    _ = git_commit_push("Add credential " ++ binary_to_list(Id)),
     ok.
 
 update(Id, NewMetadata) ->
-    ensure_cloned(),
+    _ = ensure_cloned(),
     case find_file(Id) of
         {ok, Path} ->
             {ok, Bin} = file:read_file(Path),
             Existing = jiffy:decode(Bin, [return_maps]),
             Updated = maps:merge(Existing, NewMetadata),
             ok = file:write_file(Path, jiffy:encode(Updated, [pretty])),
-            git_commit_push("Update credential " ++ binary_to_list(Id)),
+            _ = git_commit_push("Update credential " ++ binary_to_list(Id)),
             ok;
         error ->
             {error, not_found}
     end.
 
 delete(Id) ->
-    ensure_cloned(),
+    _ = ensure_cloned(),
     case find_file(Id) of
         {ok, Path} ->
-            file:delete(Path),
-            git_commit_push("Delete credential " ++ binary_to_list(Id)),
+            _ = file:delete(Path),
+            _ = git_commit_push("Delete credential " ++ binary_to_list(Id)),
             ok;
         error ->
             {error, not_found}
     end.
 
 load_config() ->
-    ensure_cloned(),
+    _ = ensure_cloned(),
     ConfigPath = filename:join(?LOCAL_DIR, "config.json"),
     case file:read_file(ConfigPath) of
         {ok, Bin} -> {ok, jiffy:decode(Bin, [return_maps])};
@@ -79,10 +79,10 @@ load_config() ->
     end.
 
 save_config(Config) ->
-    ensure_cloned(),
+    _ = ensure_cloned(),
     ConfigPath = filename:join(?LOCAL_DIR, "config.json"),
     ok = file:write_file(ConfigPath, jiffy:encode(Config, [pretty])),
-    git_commit_push("Update config"),
+    _ = git_commit_push("Update config"),
     ok.
 
 %%====================================================================
@@ -92,16 +92,19 @@ save_config(Config) ->
 ensure_cloned() ->
     case filelib:is_dir(?LOCAL_DIR) of
         true ->
-            os:cmd("cd " ++ ?LOCAL_DIR ++ " && git pull --quiet 2>/dev/null");
+            _ = os:cmd("cd " ++ ?LOCAL_DIR ++ " && git pull --quiet 2>/dev/null"),
+            ok;
         false ->
             Repo = binary_to_list(config_loader:get(git_repo, <<>>)),
             Branch = binary_to_list(config_loader:get(git_branch, <<"main">>)),
-            os:cmd("git clone --branch " ++ Branch ++ " --depth 1 " ++ Repo ++ " " ++ ?LOCAL_DIR)
+            _ = os:cmd("git clone --branch " ++ Branch ++ " --depth 1 " ++ Repo ++ " " ++ ?LOCAL_DIR),
+            ok
     end.
 
 git_commit_push(Msg) ->
     Cmd = "cd " ++ ?LOCAL_DIR ++ " && git add -A && git commit -m '" ++ Msg ++ "' && git push",
-    os:cmd(Cmd).
+    _ = os:cmd(Cmd),
+    ok.
 
 find_file(Id) ->
     Files = filelib:wildcard(filename:join(?LOCAL_DIR, "*.json")),

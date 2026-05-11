@@ -76,8 +76,8 @@ translate_nonstream(From, To, Body) ->
 %%====================================================================
 
 init([]) ->
-    ets:new(?TABLE, [named_table, set, public, {read_concurrency, true}]),
-    ets:new(?RESPONSES_TABLE, [named_table, set, public, {read_concurrency, true}]),
+    _ = ets:new(?TABLE, [named_table, set, public, {read_concurrency, true}]),
+    _ = ets:new(?RESPONSES_TABLE, [named_table, set, public, {read_concurrency, true}]),
     {ok, #{}}.
 
 handle_call({register, From, To, Module}, _From, State) ->

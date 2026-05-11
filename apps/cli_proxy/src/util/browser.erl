@@ -10,17 +10,15 @@ open_url(URL) when is_binary(URL) ->
 open_url(URL) when is_list(URL) ->
     case os:type() of
         {unix, darwin} ->
-            os:cmd("open " ++ escape(URL)),
+            _ = os:cmd("open " ++ escape(URL)),
             ok;
         {unix, _Linux} ->
             %% Try in order: xdg-open, x-www-browser, firefox
             try_browsers(URL, ["xdg-open", "x-www-browser", "firefox",
                                "chromium", "google-chrome"]);
         {win32, _} ->
-            os:cmd("rundll32 url.dll,FileProtocolHandler " ++ escape(URL)),
-            ok;
-        _ ->
-            {error, unsupported_platform}
+            _ = os:cmd("rundll32 url.dll,FileProtocolHandler " ++ escape(URL)),
+            ok
     end.
 
 -spec is_available() -> boolean().
@@ -30,8 +28,7 @@ is_available() ->
         {unix, _} ->
             os:find_executable("xdg-open") =/= false orelse
             os:find_executable("firefox") =/= false;
-        {win32, _} -> true;
-        _ -> false
+        {win32, _} -> true
     end.
 
 %%====================================================================
@@ -44,7 +41,7 @@ try_browsers(URL, [Cmd | Rest]) ->
     case os:find_executable(Cmd) of
         false -> try_browsers(URL, Rest);
         _Path ->
-            os:cmd(Cmd ++ " " ++ escape(URL) ++ " &"),
+            _ = os:cmd(Cmd ++ " " ++ escape(URL) ++ " &"),
             ok
     end.
 

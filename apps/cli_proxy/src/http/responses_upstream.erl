@@ -36,7 +36,7 @@ run_ws_upstream(AuthId, Request, HandlerPid) ->
 
     case gun:open(parse_host(WsURL), parse_port(WsURL), #{protocols => [http]}) of
         {ok, ConnPid} ->
-            case gun:await_up(ConnPid, 10000) of
+            _ = case gun:await_up(ConnPid, 10000) of
                 {ok, _} ->
                     Path = <<"/v1/responses">>,
                     Headers = [{<<"authorization">>, <<"Bearer ", Token/binary>>},
@@ -46,7 +46,7 @@ run_ws_upstream(AuthId, Request, HandlerPid) ->
                         {gun_upgrade, ConnPid, StreamRef, [<<"websocket">>], _} ->
                             %% Connected — send request
                             gun:ws_send(ConnPid, StreamRef, {text, jiffy:encode(Request)}),
-                            ws_receive_loop(ConnPid, StreamRef, HandlerPid, []);
+                            _ = ws_receive_loop(ConnPid, StreamRef, HandlerPid, []);
                         {gun_response, ConnPid, StreamRef, _, Status, _} ->
                             HandlerPid ! {upstream_error, Status, <<"ws upgrade failed">>};
                         {gun_error, ConnPid, StreamRef, Reason} ->

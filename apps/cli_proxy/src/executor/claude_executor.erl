@@ -98,7 +98,7 @@ do_execute_stream(Auth, Request, State, Caller) ->
     Opts = [async | hackney_opts(Auth, State#state.pool)],
     case hackney:post(URL, Headers, Body, Opts) of
         {ok, ClientRef} ->
-            stream_loop(ClientRef, Caller),
+            _ = stream_loop(ClientRef, Caller),
             {ok, self()};
         {error, Reason} ->
             {error, 502, iolist_to_binary(io_lib:format("~p", [Reason]))}

@@ -5,6 +5,8 @@
 
 -export([init/2]).
 
+-dialyzer({nowarn_function, [reply_error/4]}).
+
 init(Req0, State) ->
     Method = cowboy_req:method(Req0),
     case Method of
@@ -70,12 +72,12 @@ handle_nonstream(Model, Request, Req0, State) ->
             Req = cowboy_req:reply(200, json_headers(),
                 jiffy:encode(Response), Req0),
             {ok, Req, State};
-        {error, Status, ErrBody} when is_binary(ErrBody) ->
+        {ok, stream, _} ->
+            reply_error(Req0, 501, <<"unexpected stream response">>, State);
+        {error, Status, ErrBody} ->
             %% Try to pass through upstream error
             Req = cowboy_req:reply(Status, json_headers(), ErrBody, Req0),
-            {ok, Req, State};
-        {error, Status, ErrMsg} ->
-            reply_error(Req0, Status, ErrMsg, State)
+            {ok, Req, State}
     end.
 
 handle_stream(Model, Request, Req0, State) ->
@@ -97,11 +99,9 @@ handle_stream(Model, Request, Req0, State) ->
             Acc = translator_openai_claude:init_acc(),
             stream_translate_loop(Req1, Acc),
             {ok, Req1, State};
-        {error, Status, ErrBody} when is_binary(ErrBody) ->
+        {error, Status, ErrBody} ->
             Req = cowboy_req:reply(Status, json_headers(), ErrBody, Req0),
-            {ok, Req, State};
-        {error, Status, ErrMsg} ->
-            reply_error(Req0, Status, ErrMsg, State)
+            {ok, Req, State}
     end.
 
 %%====================================================================

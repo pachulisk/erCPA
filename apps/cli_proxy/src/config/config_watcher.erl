@@ -100,7 +100,7 @@ handle_config_change(#state{config_path = Path, config_hash = OldHash} = State) 
                 true ->
                     {noreply, State};
                 false ->
-                    load_and_apply_config(Path),
+                    _ = load_and_apply_config(Path),
                     {noreply, State#state{config_hash = NewHash}}
             end;
         {error, _} ->
@@ -108,7 +108,7 @@ handle_config_change(#state{config_path = Path, config_hash = OldHash} = State) 
     end.
 
 handle_auth_change(FilePath, Events, State) ->
-    case lists:member(removed, Events) of
+    _ = case lists:member(removed, Events) of
         true ->
             %% Auth file removed — unregister credential
             Id = list_to_binary(filename:basename(FilePath, ".json")),

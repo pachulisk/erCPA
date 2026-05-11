@@ -115,9 +115,9 @@ is_excluded(ModelId, Provider) ->
 %%====================================================================
 
 init([]) ->
-    ets:new(?MODELS_TAB, [named_table, set, public, {read_concurrency, true},
+    _ = ets:new(?MODELS_TAB, [named_table, set, public, {read_concurrency, true},
                           {keypos, #model_reg.id}]),
-    ets:new(?CLIENTS_TAB, [named_table, set, protected]),
+    _ = ets:new(?CLIENTS_TAB, [named_table, set, protected]),
     {ok, #{}}.
 
 handle_call({register_client, ClientId, Provider, Models}, _From, State) ->

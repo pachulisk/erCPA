@@ -42,7 +42,7 @@ parse_lines([_Line | Rest], Acc) ->
     parse_lines(Rest, Acc).
 
 %% Format a map as an SSE data line
--spec format_event(map() | iodata()) -> iodata().
+-spec format_event(map() | iodata()) -> [iodata()].
 format_event(Event) when is_map(Event) ->
     [<<"data: ">>, jiffy:encode(Event), <<"\n\n">>];
 format_event(JSON) when is_binary(JSON) ->
@@ -51,11 +51,9 @@ format_event(IOData) ->
     [<<"data: ">>, IOData, <<"\n\n">>].
 
 %% Format the SSE termination marker
--spec format_done() -> binary().
 format_done() ->
     <<"data: [DONE]\n\n">>.
 
 %% Format a keepalive comment
--spec format_keepalive() -> binary().
 format_keepalive() ->
     <<": keepalive\n\n">>.

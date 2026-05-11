@@ -47,7 +47,7 @@ handle_call(_, _From, State) ->
     {reply, ok, State}.
 
 handle_cast({log, Entry}, #state{enabled = true, fd = Fd} = State) when Fd =/= undefined ->
-    case should_log(Entry, State#state.error_only) of
+    _ = case should_log(Entry, State#state.error_only) of
         true ->
             Line = format_entry(Entry),
             file:write(Fd, [Line, <<"\n">>]);

@@ -103,7 +103,7 @@ init([Config]) ->
         refresh_module = maps:get(refresh_module, Config, undefined),
         backoff_base_ms = maps:get(backoff_base_ms, Config, 5000)
     },
-    assert_to_clips(Data),
+    _ = assert_to_clips(Data),
     register_models(Data),
     {ok, ready, Data}.
 
@@ -268,7 +268,7 @@ terminate(_Reason, _State, #data{id = Id}) ->
     end,
     case whereis(clips_engine) of
         undefined -> ok;
-        _ -> clips_engine:retract({credential, Id})
+        _ -> _ = clips_engine:retract({credential, Id}), ok
     end,
     ok.
 

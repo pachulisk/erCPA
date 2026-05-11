@@ -19,7 +19,7 @@ stop_credential(Id) ->
     ProcName = binary_to_atom(<<"cred_", Id/binary>>, utf8),
     case whereis(ProcName) of
         undefined -> ok;
-        Pid -> supervisor:terminate_child(?MODULE, Pid)
+        Pid -> _ = supervisor:terminate_child(?MODULE, Pid), ok
     end.
 
 init([]) ->

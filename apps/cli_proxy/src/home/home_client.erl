@@ -49,10 +49,10 @@ forward_usage(UsageRecord) ->
 %%====================================================================
 
 init([HomeNode]) ->
-    net_kernel:monitor_nodes(true),
+    _ = net_kernel:monitor_nodes(true),
     Connected = case net_adm:ping(HomeNode) of
         pong ->
-            fetch_and_apply_config(HomeNode),
+            _ = fetch_and_apply_config(HomeNode),
             true;
         pang ->
             false
@@ -100,7 +100,7 @@ handle_info({nodedown, Node}, #state{home_node = Node} = State) ->
     {noreply, State#state{connected = false}};
 
 handle_info({nodeup, Node}, #state{home_node = Node} = State) ->
-    fetch_and_apply_config(Node),
+    _ = fetch_and_apply_config(Node),
     State1 = flush_usage(State#state{connected = true}),
     {noreply, State1};
 
@@ -144,12 +144,12 @@ apply_config_overlay(HomeConfig) ->
     config_loader:apply_config(Merged).
 
 flush_usage(#state{usage_buffer = [], buffer_timer = T} = State) ->
-    cancel_timer(T),
+    _ = cancel_timer(T),
     State#state{buffer_timer = undefined};
 flush_usage(#state{home_node = Home, usage_buffer = Buf, connected = true} = State) ->
     %% Forward buffered usage to home node
-    rpc:cast(Home, usage_logger, batch_log, [node(), Buf]),
-    cancel_timer(State#state.buffer_timer),
+    _ = rpc:cast(Home, usage_logger, batch_log, [node(), Buf]),
+    _ = cancel_timer(State#state.buffer_timer),
     State#state{usage_buffer = [], buffer_timer = undefined};
 flush_usage(State) ->
     State.  %% Keep buffering if disconnected

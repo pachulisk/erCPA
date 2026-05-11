@@ -76,7 +76,7 @@ clear(ModelName) ->
 %%====================================================================
 
 init([]) ->
-    ets:new(?TABLE, [named_table, set, public, {read_concurrency, true}]),
+    _ = ets:new(?TABLE, [named_table, set, public, {read_concurrency, true}]),
     schedule_cleanup(),
     {ok, #{}}.
 

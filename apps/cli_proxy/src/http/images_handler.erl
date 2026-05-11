@@ -41,11 +41,11 @@ handle_authenticated(Req0, State) ->
                     Req = cowboy_req:reply(200, json_headers(),
                         jiffy:encode(Response), Req1),
                     {ok, Req, State};
-                {error, Status, ErrBody} when is_binary(ErrBody) ->
+                {ok, stream, _} ->
+                    reply_error(Req1, 501, <<"streaming not supported">>, State);
+                {error, Status, ErrBody} ->
                     Req = cowboy_req:reply(Status, json_headers(), ErrBody, Req1),
-                    {ok, Req, State};
-                {error, Status, ErrMsg} ->
-                    reply_error(Req1, Status, ErrMsg, State)
+                    {ok, Req, State}
             end;
         _ ->
             reply_error(Req1, 400, <<"Invalid JSON body">>, State)

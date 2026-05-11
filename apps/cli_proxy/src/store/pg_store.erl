@@ -6,6 +6,8 @@
 
 -export([load_all/0, save/2, update/2, delete/1, load_config/0, save_config/1]).
 
+-dialyzer({nowarn_function, [load_all/0, save/2, update/2, delete/1, load_config/0, save_config/1, get_conn/0]}).
+
 load_all() ->
     case get_conn() of
         {ok, Conn} ->
