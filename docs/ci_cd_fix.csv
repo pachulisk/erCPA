@@ -1,0 +1,8 @@
+task_id,title,file,priority,status,verification
+C1,修复 test.yml OTP 版本为 28,.github/workflows/test.yml,HIGH,done,grep 'otp-version' 显示 28
+C2,test.yml 添加 CLIPS 编译步骤,.github/workflows/test.yml,HIGH,done,CI 中 clips_port 编译成功
+C3,test.yml 移除 || true 让失败阻断,.github/workflows/test.yml,MEDIUM,done,dialyzer/ct 失败时 CI 红
+C4,test.yml 添加 Dialyzer PLT 缓存,.github/workflows/test.yml,MEDIUM,done,第二次运行 dialyzer 明显加速
+C5,新增 Docker build+push workflow,.github/workflows/docker.yml,HIGH,done,push main 时自动构建并推送到 GHCR
+C6,新增 Release workflow（tag 触发）,.github/workflows/release.yml,MEDIUM,done,推送 v* tag 时创建 GitHub Release
+C7,新增集成测试步骤（容器内 E2E）,.github/workflows/test.yml,LOW,done,CI 中启动容器并 curl healthz
