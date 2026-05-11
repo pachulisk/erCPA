@@ -113,11 +113,21 @@ init([]) ->
         modules => [rate_limiter]
     },
 
+    RequestLogger = #{
+        id => request_logger,
+        start => {request_logger, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [request_logger]
+    },
+
     ChildSpecs = [
         ConfigLoader,
         SignatureCache,
         TranslatorRegistry,
         RateLimiter,
+        RequestLogger,
         ClipsEngine,
         ModelRegistry
     ] ++ Executors ++ [

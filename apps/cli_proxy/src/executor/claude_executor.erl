@@ -76,8 +76,8 @@ do_execute(Auth, Request, State) ->
     Headers = build_headers(Auth),
     Body = jiffy:encode(Request),
 
-    case hackney:post(URL, Headers, Body, [{pool, State#state.pool},
-                                            {recv_timeout, 120000}]) of
+    Opts = hackney_opts(Auth, State#state.pool),
+    case hackney:post(URL, Headers, Body, Opts) of
         {ok, Status, _RespHeaders, ClientRef} when Status >= 200, Status < 300 ->
             {ok, RespBody} = hackney:body(ClientRef),
             {ok, jiffy:decode(RespBody, [return_maps])};
@@ -92,13 +92,11 @@ do_execute_stream(Auth, Request, State, Caller) ->
     BaseURL = maps:get(<<"base_url">>, Auth, ?DEFAULT_BASE_URL),
     URL = <<BaseURL/binary, "/v1/messages">>,
     Headers = build_headers(Auth),
-    %% Ensure stream is true
     StreamReq = Request#{<<"stream">> => true},
     Body = jiffy:encode(StreamReq),
 
-    case hackney:post(URL, Headers, Body, [{pool, State#state.pool},
-                                            {recv_timeout, 120000},
-                                            async]) of
+    Opts = [async | hackney_opts(Auth, State#state.pool)],
+    case hackney:post(URL, Headers, Body, Opts) of
         {ok, ClientRef} ->
             stream_loop(ClientRef, Caller),
             {ok, self()};
@@ -131,9 +129,24 @@ stream_loop(ClientRef, Caller) ->
 build_headers(Auth) ->
     Token = maps:get(<<"access_token">>, Auth,
                 maps:get(<<"api_key">>, Auth, <<>>)),
-    [
+    Base = [
         {<<"Content-Type">>, <<"application/json">>},
         {<<"x-api-key">>, Token},
         {<<"anthropic-version">>, ?API_VERSION},
         {<<"Accept">>, <<"application/json">>}
-    ].
+    ],
+    Custom = maps:get(<<"headers">>, Auth, #{}),
+    Extra = maps:fold(fun(K, V, Acc) -> [{K, V} | Acc] end, [], Custom),
+    Base ++ Extra.
+
+hackney_opts(Auth, Pool) ->
+    Base = [{pool, Pool}, {recv_timeout, 120000}],
+    case maps:get(<<"proxy_url">>, Auth, <<>>) of
+        <<>> ->
+            case config_loader:get(proxy_url, <<>>) of
+                <<>> -> Base;
+                GlobalProxy -> [{proxy, binary_to_list(GlobalProxy)} | Base]
+            end;
+        ProxyURL ->
+            [{proxy, binary_to_list(ProxyURL)} | Base]
+    end.
