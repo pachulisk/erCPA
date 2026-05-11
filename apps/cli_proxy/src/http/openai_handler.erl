@@ -91,7 +91,8 @@ handle_stream(Model, Request, Req0, State) ->
         {ok, stream, _StreamPid} ->
             Headers = sse_headers(),
             Req1 = cowboy_req:stream_reply(200, Headers, Req0),
-            stream_forward_loop(Req1),
+            Acc = translator_openai_claude:init_acc(),
+            stream_translate_loop(Req1, Acc),
             {ok, Req1, State};
         {error, Status, ErrBody} when is_binary(ErrBody) ->
             Req = cowboy_req:reply(Status, json_headers(), ErrBody, Req0),
@@ -104,11 +105,22 @@ handle_stream(Model, Request, Req0, State) ->
 %% Internal
 %%====================================================================
 
-stream_forward_loop(Req) ->
+stream_translate_loop(Req, Acc) ->
     receive
         {stream_chunk, Data} ->
-            cowboy_req:stream_body(Data, nofin, Req),
-            stream_forward_loop(Req);
+            Events = sse_parser:parse(Data),
+            Acc1 = lists:foldl(fun(done, A) -> A;
+                                  ({raw, _}, A) -> A;
+                                  (Event, A) when is_map(Event) ->
+                                       {Chunks, A2} = translator_openai_claude:response_stream(Event, A),
+                                       lists:foreach(fun(Chunk) ->
+                                           cowboy_req:stream_body(
+                                               sse_parser:format_event(Chunk), nofin, Req)
+                                       end, Chunks),
+                                       A2;
+                                  (_, A) -> A
+                               end, Acc, Events),
+            stream_translate_loop(Req, Acc1);
         stream_done ->
             cowboy_req:stream_body(sse_parser:format_done(), fin, Req);
         {stream_error, _Status, _Body} ->
