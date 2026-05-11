@@ -10,7 +10,7 @@ services:
       - DEPLOY=${DEPLOY:-local}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8317/healthz"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8317/healthz"]
       interval: 10s
       timeout: 3s
       start_period: 5s
