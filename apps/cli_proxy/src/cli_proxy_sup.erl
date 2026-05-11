@@ -104,10 +104,20 @@ init([]) ->
         modules => [config_watcher]
     },
 
+    RateLimiter = #{
+        id => rate_limiter,
+        start => {rate_limiter, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [rate_limiter]
+    },
+
     ChildSpecs = [
         ConfigLoader,
         SignatureCache,
         TranslatorRegistry,
+        RateLimiter,
         ClipsEngine,
         ModelRegistry
     ] ++ Executors ++ [

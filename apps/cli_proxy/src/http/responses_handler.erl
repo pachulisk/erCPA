@@ -17,16 +17,27 @@ init(Req0, State) ->
     end.
 
 handle_post(Req0, State) ->
-    case access_control:authenticate(Req0) of
-        {error, _} ->
-            Req = cowboy_req:reply(401, json_headers(),
+    {IP, _Port} = cowboy_req:peer(Req0),
+    case rate_limiter:check(IP) of
+        {error, rate_limited} ->
+            Req = cowboy_req:reply(429, json_headers(),
                 jiffy:encode(#{<<"error">> => #{
-                    <<"message">> => <<"Invalid API key">>,
-                    <<"type">> => <<"invalid_api_key">>
+                    <<"message">> => <<"Rate limit exceeded">>,
+                    <<"type">> => <<"rate_limit_exceeded">>
                 }}), Req0),
             {ok, Req, State};
-        {ok, _} ->
-            handle_authenticated(Req0, State)
+        ok ->
+            case access_control:authenticate(Req0) of
+                {error, _} ->
+                    Req = cowboy_req:reply(401, json_headers(),
+                        jiffy:encode(#{<<"error">> => #{
+                            <<"message">> => <<"Invalid API key">>,
+                            <<"type">> => <<"invalid_api_key">>
+                        }}), Req0),
+                    {ok, Req, State};
+                {ok, _} ->
+                    handle_authenticated(Req0, State)
+            end
     end.
 
 handle_authenticated(Req0, State) ->

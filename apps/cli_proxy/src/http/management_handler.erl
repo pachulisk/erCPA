@@ -189,6 +189,29 @@ handle(<<"PUT">>, <<"quota-exceeded/switch-project">>, Req0, State) ->
     reply_json(200, #{<<"ok">> => true}, Req1, State);
 
 %%====================================================================
+%% Rate limiting
+%%====================================================================
+
+handle(<<"GET">>, <<"rate-limit">>, Req0, State) ->
+    reply_json(200, rate_limiter:get_config(), Req0, State);
+
+handle(<<"PUT">>, <<"rate-limit">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Val = jiffy:decode(Body),
+    config_loader:apply_config(#{rate_limit_rpm => Val}),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
+
+%%====================================================================
+%% Password
+%%====================================================================
+
+handle(<<"PUT">>, <<"password">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Val = jiffy:decode(Body),
+    config_loader:apply_config(#{password => Val}),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
+
+%%====================================================================
 %% Provider keys
 %%====================================================================
 

@@ -1,6 +1,6 @@
 -module(access_control).
 
-%% API key validation via ETS lookup
+%% API key + password validation
 %% Used as middleware in HTTP handlers
 
 -export([authenticate/1, validate_key/1, is_authenticated/1]).
@@ -10,15 +10,18 @@
 %% Authenticate a Cowboy request
 -spec authenticate(cowboy_req:req()) -> {ok, binary()} | {error, term()}.
 authenticate(Req) ->
-    Key = extract_key(Req),
-    case Key of
-        <<>> ->
-            %% No key provided — check if any keys are configured
-            case has_configured_keys() of
-                false -> {ok, <<"anonymous">>};  %% No keys = allow all
-                true -> {error, no_credentials}
-            end;
-        _ -> validate_key(Key)
+    case check_password(Req) of
+        {error, _} = Err -> Err;
+        ok ->
+            Key = extract_key(Req),
+            case Key of
+                <<>> ->
+                    case has_configured_keys() of
+                        false -> {ok, <<"anonymous">>};
+                        true -> {error, no_credentials}
+                    end;
+                _ -> validate_key(Key)
+            end
     end.
 
 %% Validate a key against the configured API keys
@@ -26,12 +29,10 @@ authenticate(Req) ->
 validate_key(Key) ->
     case ets:info(?API_KEYS_TABLE) of
         undefined ->
-            %% Table doesn't exist yet - allow all (no keys configured)
             {ok, Key};
         _ ->
             case ets:info(?API_KEYS_TABLE, size) of
                 0 ->
-                    %% No keys configured - allow all
                     {ok, Key};
                 _ ->
                     case ets:member(?API_KEYS_TABLE, Key) of
@@ -53,12 +54,38 @@ is_authenticated(Req) ->
 %% Internal
 %%====================================================================
 
+check_password(Req) ->
+    case config_loader:get(password) of
+        undefined -> ok;
+        <<>> -> ok;
+        Password when is_binary(Password) ->
+            Provided = extract_password(Req),
+            case Provided =:= Password of
+                true -> ok;
+                false ->
+                    case Provided of
+                        <<>> -> {error, password_required};
+                        _ -> {error, invalid_password}
+                    end
+            end;
+        _ -> ok
+    end.
+
+extract_password(Req) ->
+    %% Check X-Password header first
+    case cowboy_req:header(<<"x-password">>, Req, <<>>) of
+        <<>> ->
+            %% Fallback to query param
+            #{password := P} = cowboy_req:match_qs([{password, [], <<>>}], Req),
+            P;
+        P -> P
+    end.
+
 extract_key(Req) ->
     case cowboy_req:header(<<"authorization">>, Req, <<>>) of
         <<"Bearer ", Token/binary>> -> Token;
         <<"bearer ", Token/binary>> -> Token;
         <<>> ->
-            %% Fallback to X-API-Key header
             cowboy_req:header(<<"x-api-key">>, Req, <<>>);
         _ ->
             <<>>

@@ -1,0 +1,9 @@
+task_id,title,file,priority,status,verification
+A1,access_control 支持 password 认证,apps/cli_proxy/src/access/access_control.erl,HIGH,done,设置 password 后无密码请求返回 401
+A2,新建 rate_limiter 模块,apps/cli_proxy/src/access/rate_limiter.erl,HIGH,done,模块编译通过且 ETS 计数正确
+A3,rate_limiter 加入 supervision tree,apps/cli_proxy/src/cli_proxy_sup.erl,HIGH,done,进程启动且注册成功
+A4,openai_handler 集成 rate_limiter,apps/cli_proxy/src/http/openai_handler.erl,MEDIUM,done,超限时返回 429
+A5,responses_handler 集成 rate_limiter,apps/cli_proxy/src/http/responses_handler.erl,MEDIUM,done,超限时返回 429
+A6,management_handler 暴露限流配置,apps/cli_proxy/src/http/management_handler.erl,LOW,done,GET/PUT /v0/management/rate-limit 工作
+A7,sys.config 添加默认配置,config/sys.config,LOW,done,rate_limit_rpm 和 password 字段存在
+A8,编译+测试验证,N/A,HIGH,done,rebar3 compile && rebar3 eunit 通过
