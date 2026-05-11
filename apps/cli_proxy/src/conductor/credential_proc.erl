@@ -151,15 +151,13 @@ ready(_EventType, _Event, Data) ->
 %%====================================================================
 
 refreshing(enter, _OldState, Data) ->
-    %% Spawn refresh process
     Self = self(),
     case Data#data.refresh_module of
         undefined ->
-            %% No refresh module — go back to ready
             {next_state, ready, Data};
         Mod ->
             spawn_link(fun() ->
-                Result = Mod:refresh(Data#data.metadata),
+                Result = try_refresh(Mod, Data#data.metadata),
                 gen_statem:cast(Self, {refresh_result, Result})
             end),
             {keep_state, Data, [{state_timeout, 60000, refresh_timeout}]}
@@ -280,6 +278,28 @@ terminate(_Reason, _State, #data{id = Id}) ->
 
 proc_name(Id) ->
     binary_to_atom(<<"cred_", Id/binary>>, utf8).
+
+try_refresh(Mod, Metadata) ->
+    %% Try home node first if connected, fallback to local
+    case whereis(home_client) of
+        undefined -> Mod:refresh(Metadata);
+        _ ->
+            case home_client:is_connected() of
+                true ->
+                    case rpc_refresh_via_home(Mod, Metadata) of
+                        {ok, _} = Ok -> Ok;
+                        {error, _} -> Mod:refresh(Metadata)
+                    end;
+                false -> Mod:refresh(Metadata)
+            end
+    end.
+
+rpc_refresh_via_home(Mod, Metadata) ->
+    HomeNode = gen_server:call(home_client, get_home_node, 2000),
+    case rpc:call(HomeNode, Mod, refresh, [Metadata], 30000) of
+        {badrpc, _} -> {error, home_unavailable};
+        Result -> Result
+    end.
 
 register_models(#data{id = Id, provider = Provider, metadata = Meta}) ->
     case whereis(model_registry) of

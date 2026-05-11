@@ -153,6 +153,15 @@ execute_with_retry(SourceFormat, Model, Request, Opts, Stream, Retries, MaxCreds
                     mark_credential_result(AuthId, Model, Status),
                     execute_with_retry(SourceFormat, Model, Request, Opts,
                                        Stream, Retries - 1, MaxCreds, Tried + 1);
+                {error, 429, Body} ->
+                    %% Quota exceeded — try fallback chain
+                    mark_credential_result(AuthId, Model, 429),
+                    model_registry:set_quota_exceeded(AuthId, Model),
+                    case try_quota_fallback(SourceFormat, Model, Request, Opts, Stream) of
+                        {ok, _} = Ok -> Ok;
+                        {ok, stream, _} = Ok -> Ok;
+                        _ -> {error, 429, Body}
+                    end;
                 {error, Status, Body} ->
                     %% Non-retriable
                     mark_credential_result(AuthId, Model, Status),
@@ -210,6 +219,29 @@ get_provider(CredId) ->
 
 generate_request_id() ->
     <<"req_", (integer_to_binary(erlang:unique_integer([positive])))/binary>>.
+
+try_quota_fallback(SourceFormat, Model, Request, Opts, Stream) ->
+    %% Chain: switch-preview-model → retry with different cred
+    case config_loader:get(quota_switch_preview_model, false) of
+        true ->
+            PreviewModel = to_preview_model(Model),
+            case PreviewModel =/= Model of
+                true ->
+                    MaxRetries = config_loader:get(request_retry, 3),
+                    execute_with_retry(SourceFormat, PreviewModel,
+                        Request#{<<"model">> => PreviewModel}, Opts,
+                        Stream, MaxRetries, 0, 0);
+                false -> {error, 429, <<"quota exceeded">>}
+            end;
+        false -> {error, 429, <<"quota exceeded">>}
+    end.
+
+to_preview_model(Model) ->
+    %% Append -preview if not already present
+    case binary:match(Model, <<"-preview">>) of
+        nomatch -> <<Model/binary, "-preview">>;
+        _ -> Model
+    end.
 
 bind_session(<<>>, _AuthId) -> ok;
 bind_session(undefined, _AuthId) -> ok;
