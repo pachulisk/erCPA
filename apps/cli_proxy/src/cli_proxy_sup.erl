@@ -113,6 +113,15 @@ init([]) ->
         modules => [rate_limiter]
     },
 
+    UsageQueue = #{
+        id => usage_queue,
+        start => {usage_queue, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [usage_queue]
+    },
+
     RequestLogger = #{
         id => request_logger,
         start => {request_logger, start_link, []},
@@ -127,6 +136,7 @@ init([]) ->
         SignatureCache,
         TranslatorRegistry,
         RateLimiter,
+        UsageQueue,
         RequestLogger,
         ClipsEngine,
         ModelRegistry

@@ -1,0 +1,11 @@
+task_id,title,type,priority,status,new_files,modified_files,description
+P01,Cloaking 伪装策略,CLIPS+Erlang,HIGH,done,priv/clips/cloaking_rules.clp + cloaking.erl,clips_engine.erl,CLIPS 规则决定是否伪装 + Erlang 执行 header/UA/零宽混淆
+P02,Builtin Tools 注册表,Erlang,HIGH,done,builtin_tools.erl,,检测 Claude 内置工具 + 增强请求 tools 数组
+P03,Response Rewriter,CLIPS+Erlang,HIGH,done,priv/clips/rewrite_rules.clp + response_rewriter.erl,,CLIPS 规则定义改写模式 + Erlang 执行 model/tool/signature 改写
+P04,Per-Client API Key Mapping,CLIPS+Erlang,HIGH,done,priv/clips/client_routing.clp,clips_engine.erl,CLIPS facts 映射 client→upstream key
+P05,AMP 反向代理模块,Erlang,MEDIUM,done,amp_proxy.erl,,反向代理到 ampcode.com + Gemini bridge 路径转换
+P06,Claude Code Instructions 注入,Erlang,MEDIUM,done,priv/claude_code_instructions.txt,cloaking.erl 负责加载,伪装时注入系统指令到 system messages
+P07,Device Code OAuth 完善,Erlang,MEDIUM,done,,已有完整实现(oauth_codex + oauth_kimi),验证 codex device + kimi device 端点已实现
+P08,Redis Usage Queue,Erlang,MEDIUM,done,usage_queue.erl,cli_proxy_sup.erl,ETS 环形缓冲 + TTL 清理
+P09,Request Idempotency,Erlang,LOW,done,,signature_cache.erl 已有基础,基于 cache key 去重
+P10,Advanced Keepalive 配置,Erlang,LOW,done,,stream_keepalive.erl,从 config 读取 keepalive_seconds

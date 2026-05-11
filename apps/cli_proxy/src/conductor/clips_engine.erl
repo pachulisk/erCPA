@@ -88,7 +88,9 @@ load_rules(#state{port = Port}) ->
     ClipsDir = filename:join(PrivDir, "clips"),
     Files = ["templates.clp", "selection.clp", "cooldown.clp",
              "thinking.clp", "quota.clp", "routing.clp",
-             "status_rules.clp", "credential_policy.clp"],
+             "status_rules.clp", "credential_policy.clp",
+             "cloaking_rules.clp", "rewrite_rules.clp",
+             "client_routing.clp"],
     lists:foreach(fun(File) ->
         Path = filename:join(ClipsDir, File),
         case filelib:is_file(Path) of
@@ -255,12 +257,25 @@ to_clips_template(<<"status_input">>) -> <<"status-input">>;
 to_clips_template(<<"status_output">>) -> <<"status-output">>;
 to_clips_template(<<"refresh_schedule">>) -> <<"refresh-schedule">>;
 to_clips_template(<<"cooldown_policy">>) -> <<"cooldown-policy">>;
+to_clips_template(<<"cloak_input">>) -> <<"cloak-input">>;
+to_clips_template(<<"cloak_output">>) -> <<"cloak-output">>;
+to_clips_template(<<"sensitive_word">>) -> <<"sensitive-word">>;
+to_clips_template(<<"rewrite_tool_name">>) -> <<"rewrite-tool-name">>;
+to_clips_template(<<"client_key_mapping">>) -> <<"client-key-mapping">>;
+to_clips_template(<<"client_route_query">>) -> <<"client-route-query">>;
+to_clips_template(<<"client_route_result">>) -> <<"client-route-result">>;
+to_clips_template(<<"cooldown_query">>) -> <<"cooldown-query">>;
+to_clips_template(<<"cooldown_result">>) -> <<"cooldown-result">>;
 to_clips_template(Other) -> Other.
 
 to_clips_slot(<<"cooldown_seconds">>) -> <<"cooldown-seconds">>;
 to_clips_slot(<<"quota_fallback">>) -> <<"quota-fallback">>;
 to_clips_slot(<<"interval_ms">>) -> <<"interval-ms">>;
 to_clips_slot(<<"new_backoff_level">>) -> <<"new-backoff-level">>;
+to_clips_slot(<<"user_agent">>) -> <<"user-agent">>;
+to_clips_slot(<<"should_cloak">>) -> <<"should-cloak">>;
+to_clips_slot(<<"client_key">>) -> <<"client-key">>;
+to_clips_slot(<<"upstream_key">>) -> <<"upstream-key">>;
 to_clips_slot(<<"session_id">>) -> <<"session-id">>;
 to_clips_slot(<<"credential_id">>) -> <<"credential-id">>;
 to_clips_slot(<<"request_id">>) -> <<"request-id">>;

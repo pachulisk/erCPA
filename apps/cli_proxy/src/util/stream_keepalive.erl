@@ -4,11 +4,10 @@
 
 -export([start/1, start/2, stop/1]).
 
--define(DEFAULT_INTERVAL, 30000).  %% 30 seconds
-
 -spec start(pid()) -> pid().
 start(CallerPid) ->
-    start(CallerPid, ?DEFAULT_INTERVAL).
+    Interval = config_loader:get(keepalive_seconds, 30) * 1000,
+    start(CallerPid, Interval).
 
 -spec start(pid(), pos_integer()) -> pid().
 start(CallerPid, Interval) ->
