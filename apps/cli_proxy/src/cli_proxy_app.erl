@@ -28,12 +28,19 @@ start(_StartType, _StartArgs) ->
             {"/v1/completions", completions_handler, []},
             {"/v1/messages/count_tokens", count_tokens_handler, []},
 
+            %% Image generation
+            {"/v1/images/generations", images_handler, []},
+            {"/v1/images/edits", images_handler, []},
+
             %% Responses API
             {"/v1/responses", responses_handler, []},
             {"/v1/responses/compact", responses_compact_handler, []},
 
             %% Responses API WebSocket (upgrade)
             {"/v1/ws/responses", responses_ws_handler, []},
+
+            %% WebSocket relay (provider proxy)
+            {"/v1/ws", ws_relay_handler, []},
 
             %% Codex direct aliases
             {"/backend-api/codex/responses", responses_handler, []},

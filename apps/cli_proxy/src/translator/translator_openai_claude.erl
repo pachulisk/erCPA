@@ -99,7 +99,13 @@ response_stream(#{<<"type">> := <<"content_block_delta">>,
 
 response_stream(#{<<"type">> := <<"content_block_delta">>,
                   <<"delta">> := #{<<"type">> := <<"thinking_delta">>,
-                                   <<"thinking">> := Thinking}}, Acc) ->
+                                   <<"thinking">> := Thinking}} = Event, Acc) ->
+    %% Cache thinking signature if present
+    Sig = maps:get(<<"signature">>, maps:get(<<"delta">>, Event, #{}), <<>>),
+    case Sig of
+        <<>> -> ok;
+        _ -> catch signature_cache:cache(Acc#acc.model, Thinking, Sig)
+    end,
     Chunk = #{
         <<"id">> => Acc#acc.response_id,
         <<"object">> => <<"chat.completion.chunk">>,
