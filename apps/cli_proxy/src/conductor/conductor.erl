@@ -171,8 +171,13 @@ do_execute(Provider, AuthId, Request, Stream, Opts) ->
         {ok, Auth} ->
             Mod = executor_module(Provider),
             case Stream of
-                true -> Mod:execute_stream(AuthId, Auth, Request, Opts);
-                false -> Mod:execute(AuthId, Auth, Request, Opts)
+                true ->
+                    case Mod:execute_stream(AuthId, Auth, Request, Opts) of
+                        {ok, Pid} -> {ok, stream, Pid};
+                        {error, S, B} -> {error, S, B}
+                    end;
+                false ->
+                    Mod:execute(AuthId, Auth, Request, Opts)
             end
     end.
 
