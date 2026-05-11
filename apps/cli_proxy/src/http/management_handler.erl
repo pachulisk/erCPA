@@ -176,11 +176,132 @@ handle(<<"PUT">>, <<"ws-auth">>, Req0, State) ->
     reply_json(200, #{<<"ok">> => true}, Req1, State);
 
 %%====================================================================
+%% Logs management
+%%====================================================================
+
+handle(<<"GET">>, <<"logs-max-total-size-mb">>, Req0, State) ->
+    reply_json(200, config_loader:get(logs_max_total_size_mb, 0), Req0, State);
+
+handle(<<"PUT">>, <<"logs-max-total-size-mb">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Val = jiffy:decode(Body),
+    config_loader:apply_config(#{logs_max_total_size_mb => Val}),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
+
+handle(<<"GET">>, <<"error-logs-max-files">>, Req0, State) ->
+    reply_json(200, config_loader:get(error_logs_max_files, 10), Req0, State);
+
+handle(<<"PUT">>, <<"error-logs-max-files">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Val = jiffy:decode(Body),
+    config_loader:apply_config(#{error_logs_max_files => Val}),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
+
+%%====================================================================
+%% Retry configuration
+%%====================================================================
+
+handle(<<"GET">>, <<"request-retry">>, Req0, State) ->
+    reply_json(200, config_loader:get(request_retry, 3), Req0, State);
+
+handle(<<"PUT">>, <<"request-retry">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Val = jiffy:decode(Body),
+    config_loader:apply_config(#{request_retry => Val}),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
+
+handle(<<"GET">>, <<"max-retry-interval">>, Req0, State) ->
+    reply_json(200, config_loader:get(max_retry_interval, 0), Req0, State);
+
+handle(<<"PUT">>, <<"max-retry-interval">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Val = jiffy:decode(Body),
+    config_loader:apply_config(#{max_retry_interval => Val}),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
+
+%%====================================================================
+%% Proxy
+%%====================================================================
+
+handle(<<"GET">>, <<"proxy-url">>, Req0, State) ->
+    reply_json(200, config_loader:get(proxy_url, <<>>), Req0, State);
+
+handle(<<"PUT">>, <<"proxy-url">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Val = jiffy:decode(Body),
+    config_loader:apply_config(#{proxy_url => Val}),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
+
+handle(<<"DELETE">>, <<"proxy-url">>, Req0, State) ->
+    config_loader:apply_config(#{proxy_url => <<>>}),
+    reply_json(200, #{<<"ok">> => true}, Req0, State);
+
+%%====================================================================
+%% Model prefix
+%%====================================================================
+
+handle(<<"GET">>, <<"force-model-prefix">>, Req0, State) ->
+    reply_json(200, config_loader:get(force_model_prefix, <<>>), Req0, State);
+
+handle(<<"PUT">>, <<"force-model-prefix">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Val = jiffy:decode(Body),
+    config_loader:apply_config(#{force_model_prefix => Val}),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
+
+%%====================================================================
+%% Session affinity
+%%====================================================================
+
+handle(<<"GET">>, <<"routing/session-affinity">>, Req0, State) ->
+    reply_json(200, config_loader:get(session_affinity_ttl, 3600), Req0, State);
+
+handle(<<"PUT">>, <<"routing/session-affinity">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Val = jiffy:decode(Body),
+    config_loader:apply_config(#{session_affinity_ttl => Val}),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
+
+%%====================================================================
+%% Auth file PATCH operations
+%%====================================================================
+
+handle(<<"PATCH">>, <<"auth-files/status">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    #{<<"id">> := Id, <<"disabled">> := Disabled} = jiffy:decode(Body, [return_maps]),
+    case auth_store:update(Id, #{<<"disabled">> => Disabled}) of
+        ok -> reply_json(200, #{<<"ok">> => true}, Req1, State);
+        {error, Reason} ->
+            reply_json(404, #{<<"error">> => iolist_to_binary(io_lib:format("~p", [Reason]))},
+                       Req1, State)
+    end;
+
+handle(<<"PATCH">>, <<"auth-files/fields">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    #{<<"id">> := Id} = Data = jiffy:decode(Body, [return_maps]),
+    Fields = maps:remove(<<"id">>, Data),
+    case auth_store:update(Id, Fields) of
+        ok -> reply_json(200, #{<<"ok">> => true}, Req1, State);
+        {error, Reason} ->
+            reply_json(404, #{<<"error">> => iolist_to_binary(io_lib:format("~p", [Reason]))},
+                       Req1, State)
+    end;
+
+%%====================================================================
 %% Quota
 %%====================================================================
 
 handle(<<"GET">>, <<"quota-exceeded/switch-project">>, Req0, State) ->
     reply_json(200, config_loader:get(quota_switch_project, false), Req0, State);
+
+handle(<<"GET">>, <<"quota-exceeded/switch-preview-model">>, Req0, State) ->
+    reply_json(200, config_loader:get(quota_switch_preview_model, false), Req0, State);
+
+handle(<<"PUT">>, <<"quota-exceeded/switch-preview-model">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Val = jiffy:decode(Body),
+    config_loader:apply_config(#{quota_switch_preview_model => Val}),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
 
 handle(<<"PUT">>, <<"quota-exceeded/switch-project">>, Req0, State) ->
     {ok, Body, Req1} = cowboy_req:read_body(Req0),
@@ -209,6 +330,19 @@ handle(<<"PUT">>, <<"password">>, Req0, State) ->
     {ok, Body, Req1} = cowboy_req:read_body(Req0),
     Val = jiffy:decode(Body),
     config_loader:apply_config(#{password => Val}),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
+
+%%====================================================================
+%% Payload rules
+%%====================================================================
+
+handle(<<"GET">>, <<"payload">>, Req0, State) ->
+    reply_json(200, config_loader:get(payload, #{}), Req0, State);
+
+handle(<<"PUT">>, <<"payload">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Val = jiffy:decode(Body, [return_maps]),
+    config_loader:apply_config(#{payload => Val}),
     reply_json(200, #{<<"ok">> => true}, Req1, State);
 
 %%====================================================================
@@ -281,6 +415,33 @@ handle(<<"PUT">>, <<"ampcode/model-mappings">>, Req0, State) ->
     Mappings = jiffy:decode(Body, [return_maps]),
     config_loader:apply_config(#{ampcode => #{model_mappings => Mappings}}),
     gen_server:cast(amp_config, reload),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
+
+handle(<<"GET">>, <<"ampcode/upstream-url">>, Req0, State) ->
+    reply_json(200, config_loader:get(ampcode_upstream_url, <<>>), Req0, State);
+
+handle(<<"PUT">>, <<"ampcode/upstream-url">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Val = jiffy:decode(Body),
+    config_loader:apply_config(#{ampcode_upstream_url => Val}),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
+
+handle(<<"GET">>, <<"ampcode/upstream-api-keys">>, Req0, State) ->
+    reply_json(200, config_loader:get(ampcode_upstream_api_keys, #{}), Req0, State);
+
+handle(<<"PUT">>, <<"ampcode/upstream-api-keys">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Val = jiffy:decode(Body, [return_maps]),
+    config_loader:apply_config(#{ampcode_upstream_api_keys => Val}),
+    reply_json(200, #{<<"ok">> => true}, Req1, State);
+
+handle(<<"GET">>, <<"ampcode/force-model-mappings">>, Req0, State) ->
+    reply_json(200, config_loader:get(ampcode_force_model_mappings, false), Req0, State);
+
+handle(<<"PUT">>, <<"ampcode/force-model-mappings">>, Req0, State) ->
+    {ok, Body, Req1} = cowboy_req:read_body(Req0),
+    Val = jiffy:decode(Body),
+    config_loader:apply_config(#{ampcode_force_model_mappings => Val}),
     reply_json(200, #{<<"ok">> => true}, Req1, State);
 
 %%====================================================================
