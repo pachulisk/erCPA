@@ -60,12 +60,13 @@ check_password(Req) ->
         <<>> -> ok;
         Password when is_binary(Password) ->
             Provided = extract_password(Req),
-            case Provided =:= Password of
-                true -> ok;
-                false ->
-                    case Provided of
-                        <<>> -> {error, password_required};
-                        _ -> {error, invalid_password}
+            case Provided of
+                <<>> -> {error, password_required};
+                _ ->
+                    %% Constant-time comparison to prevent timing attacks
+                    case constant_time_compare(Provided, Password) of
+                        true -> ok;
+                        false -> {error, invalid_password}
                     end
             end;
         _ -> ok
@@ -96,3 +97,16 @@ has_configured_keys() ->
         undefined -> false;
         _ -> ets:info(?API_KEYS_TABLE, size) > 0
     end.
+
+%% Constant-time binary comparison to prevent timing attacks
+constant_time_compare(A, B) when is_binary(A), is_binary(B) ->
+    case byte_size(A) =:= byte_size(B) of
+        false -> false;
+        true ->
+            constant_time_compare(A, B, 0, 0)
+    end.
+
+constant_time_compare(<<>>, <<>>, _Idx, Acc) ->
+    Acc =:= 0;
+constant_time_compare(<<A, RestA/binary>>, <<B, RestB/binary>>, Idx, Acc) ->
+    constant_time_compare(RestA, RestB, Idx + 1, Acc bor (A bxor B)).

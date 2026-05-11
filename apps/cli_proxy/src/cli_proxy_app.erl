@@ -45,20 +45,34 @@ start(_StartType, _StartArgs) ->
             {"/antigravity/callback", oauth_callback_handler, []}
         ]}
     ]),
-    {ok, _} = cowboy:start_clear(http_listener,
-        [{port, Port}],
-        #{env => #{dispatch => Dispatch}}
-    ),
+    {ok, _} = start_listener(Port, Dispatch),
 
     {ok, Pid}.
 
 stop(_State) ->
     cowboy:stop_listener(http_listener),
+    cowboy:stop_listener(https_listener),
     ok.
 
 %% ====================================================================
 %% Internal
 %% ====================================================================
+
+start_listener(Port, Dispatch) ->
+    case application:get_env(cli_proxy, tls_enable, false) of
+        true ->
+            CertFile = application:get_env(cli_proxy, tls_cert, ""),
+            KeyFile = application:get_env(cli_proxy, tls_key, ""),
+            cowboy:start_tls(https_listener,
+                [{port, Port},
+                 {certfile, CertFile},
+                 {keyfile, KeyFile}],
+                #{env => #{dispatch => Dispatch}});
+        false ->
+            cowboy:start_clear(http_listener,
+                [{port, Port}],
+                #{env => #{dispatch => Dispatch}})
+    end.
 
 register_translators() ->
     translator_openai_claude:register(),
