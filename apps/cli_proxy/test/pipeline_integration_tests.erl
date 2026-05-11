@@ -174,17 +174,37 @@ credential_proc_integration_test_() ->
 config_payload_integration_test_() ->
     {setup,
      fun() ->
-         {ok, _} = config_loader:start_link(#{
-             payload => #{
-                 override => [#{
-                     models => [#{name => <<"*">>, protocol => <<>>}],
-                     params => #{<<"user">> => <<"proxy">>}
-                 }]
-             }
-         }),
-         ok
+         case whereis(config_loader) of
+             undefined ->
+                 {ok, _} = config_loader:start_link(#{
+                     payload => #{
+                         override => [#{
+                             models => [#{name => <<"*">>, protocol => <<>>}],
+                             params => #{<<"user">> => <<"proxy">>}
+                         }]
+                     }
+                 }),
+                 {started, config_loader};
+             _ ->
+                 OldConfig = config_loader:get(payload),
+                 config_loader:apply_config(#{
+                     payload => #{
+                         override => [#{
+                             models => [#{name => <<"*">>, protocol => <<>>}],
+                             params => #{<<"user">> => <<"proxy">>}
+                         }]
+                     }
+                 }),
+                 {existing, OldConfig}
+         end
      end,
-     fun(_) -> gen_server:stop(config_loader) end,
+     fun({started, _}) -> gen_server:stop(config_loader);
+        ({existing, OldConfig}) ->
+             case OldConfig of
+                 undefined -> config_loader:apply_config(#{payload => #{}});
+                 V -> config_loader:apply_config(#{payload => V})
+             end
+     end,
      [
       {"payload rules applied from config",
        fun() ->
