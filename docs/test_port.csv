@@ -1,13 +1,13 @@
 task_id,title,test_file,target_tests,priority,status,description
 T01,Executor URL/header 单元测试,executor_detail_tests.erl,20,HIGH,done,每个 executor 的 URL 构建、header 组装、base_url 覆盖、错误状态码处理
 T02,Conductor 凭证选择测试,conductor_tests.erl,15,HIGH,done,select_credential 流程、execute_with_retry 重试逻辑、provider dispatch、stream vs non-stream
-T03,Config watcher 测试,config_watcher_tests.erl,12,HIGH,todo,文件新增/修改/删除检测、hash 对比防重复、credential 自动加载
+T03,Config watcher 测试,config_watcher_tests.erl,12,HIGH,done,文件新增/修改/删除检测、hash 对比防重复、credential 自动加载
 T04,Access control 测试,access_control_tests.erl,10,HIGH,done,password 认证、API key 验证、无 key 放行、错误组合
 T05,Rate limiter 测试,rate_limiter_tests.erl,8,HIGH,done,滑动窗口计数、超限拒绝、过期清理、禁用(rpm=0)
 T06,AMP handler + mapper 测试,amp_tests.erl,12,MEDIUM,done,模型映射(精确/regex)、本地 vs 上游路由、配置热加载
-T07,OAuth 各 provider 测试,oauth_provider_tests.erl,15,MEDIUM,todo,claude/codex/gemini/kimi/antigravity 的 auth_url 生成、token exchange、refresh
+T07,OAuth 各 provider 测试,oauth_provider_tests.erl,15,MEDIUM,done,claude/codex/gemini/kimi/antigravity 的 auth_url 生成、token exchange、refresh
 T08,Streaming 翻译测试,stream_translation_tests.erl,12,MEDIUM,done,Claude SSE → OpenAI chunk 翻译、message_start/delta/stop 事件、thinking delta
 T09,Management API 测试,management_api_tests.erl,10,MEDIUM,done,config/auth-files/rate-limit/password 全部 endpoint CRUD
-T10,Home client 测试,home_mode_tests.erl,8,LOW,todo,satellite 连接/断开、config overlay、usage buffer flush
-T11,Log rotator 测试,log_rotator_tests.erl,5,LOW,todo,文件大小轮转、过期清理
-T12,Model registry 扩展测试,model_registry_ext_tests.erl,8,LOW,todo,register/unregister_client、quota_exceeded 过期、多 provider 同模型
+T10,Home client 测试,home_mode_tests.erl,8,LOW,done,satellite 连接/断开、config overlay、usage buffer flush
+T11,Log rotator 测试,log_rotator_tests.erl,5,LOW,done,文件大小轮转、过期清理
+T12,Model registry 扩展测试,model_registry_ext_tests.erl,8,LOW,done,register/unregister_client、quota_exceeded 过期、多 provider 同模型
