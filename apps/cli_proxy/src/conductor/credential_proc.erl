@@ -346,52 +346,30 @@ check_model_status(Model, Data) ->
     end.
 
 handle_mark_result(Model, StatusCode, Data) when StatusCode >= 200, StatusCode < 300 ->
-    %% Success — clear model cooldown
     Data1 = clear_model_cooldown(Model, Data),
     {ready, Data1};
 
-handle_mark_result(Model, 429, Data) ->
-    %% Rate limited — exponential backoff on model
+handle_mark_result(Model, StatusCode, Data) ->
     BaseModel = strip_thinking_suffix(Model),
     ModelState = maps:get(BaseModel, Data#data.model_states, default_model_state()),
     Level = maps:get(backoff_level, ModelState, 0),
-    Now = erlang:system_time(second),
-    Cooldown = min(trunc(math:pow(2, Level)), 1800),
-    NewMS = ModelState#{
-        available => false,
-        cooldown_until => Now + Cooldown,
-        backoff_level => Level + 1
-    },
-    Data1 = Data#data{model_states = maps:put(BaseModel, NewMS, Data#data.model_states)},
-    {cooldown, Data1};
-
-handle_mark_result(Model, StatusCode, Data) when StatusCode =:= 401;
-                                                  StatusCode =:= 402;
-                                                  StatusCode =:= 403 ->
-    %% Auth error — 30 minute hold
-    BaseModel = strip_thinking_suffix(Model),
-    Now = erlang:system_time(second),
-    NewMS = #{available => false, cooldown_until => Now + 1800, backoff_level => 0},
-    Data1 = Data#data{model_states = maps:put(BaseModel, NewMS, Data#data.model_states)},
-    {cooldown, Data1};
-
-handle_mark_result(Model, StatusCode, Data) when StatusCode >= 500 ->
-    %% Server error — short cooldown
-    BaseModel = strip_thinking_suffix(Model),
-    ModelState = maps:get(BaseModel, Data#data.model_states, default_model_state()),
-    Level = maps:get(backoff_level, ModelState, 0),
-    Now = erlang:system_time(second),
-    Cooldown = min(trunc(math:pow(2, Level)), 60),
-    NewMS = ModelState#{
-        available => false,
-        cooldown_until => Now + Cooldown,
-        backoff_level => Level + 1
-    },
-    Data1 = Data#data{model_states = maps:put(BaseModel, NewMS, Data#data.model_states)},
-    {ready, Data1};  %% Don't go to cooldown state for 5xx (just model-level)
-
-handle_mark_result(_Model, _StatusCode, Data) ->
-    {ready, Data}.
+    {CooldownSec, NewLevel} = query_cooldown_policy(StatusCode, Level),
+    case CooldownSec of
+        0 ->
+            {ready, Data};
+        _ ->
+            Now = erlang:system_time(second),
+            NewMS = ModelState#{
+                available => false,
+                cooldown_until => Now + CooldownSec,
+                backoff_level => NewLevel
+            },
+            Data1 = Data#data{model_states = maps:put(BaseModel, NewMS, Data#data.model_states)},
+            case StatusCode >= 500 of
+                true -> {ready, Data1};
+                false -> {cooldown, Data1}
+            end
+    end.
 
 clear_model_cooldown(Model, Data) ->
     BaseModel = strip_thinking_suffix(Model),
@@ -409,14 +387,59 @@ strip_thinking_suffix(Model) ->
 
 calc_refresh_delay(#data{refresh_module = undefined}) ->
     infinity;
-calc_refresh_delay(#data{provider = claude}) ->
-    4 * 3600 * 1000;  %% 4 hours
-calc_refresh_delay(#data{provider = codex}) ->
-    5 * 86400 * 1000;  %% 5 days
-calc_refresh_delay(#data{provider = P}) when P =:= antigravity; P =:= kimi ->
-    300000;  %% 5 minutes
-calc_refresh_delay(_) ->
-    3600000.  %% 1 hour default
+calc_refresh_delay(#data{provider = Provider}) ->
+    query_refresh_schedule(Provider).
+
+query_refresh_schedule(Provider) ->
+    ProvBin = atom_to_binary(Provider, utf8),
+    case whereis(clips_engine) of
+        undefined ->
+            refresh_schedule_fallback(Provider);
+        _ ->
+            case clips_engine:query(refresh_schedule, <<"provider">>, ProvBin) of
+                {ok, #{<<"interval-ms">> := Ms}} -> Ms;
+                _ ->
+                    %% Try wildcard
+                    case clips_engine:query(refresh_schedule, <<"provider">>, <<"*">>) of
+                        {ok, #{<<"interval-ms">> := Ms}} -> Ms;
+                        _ -> refresh_schedule_fallback(Provider)
+                    end
+            end
+    end.
+
+refresh_schedule_fallback(claude) -> 14400000;
+refresh_schedule_fallback(codex) -> 432000000;
+refresh_schedule_fallback(P) when P =:= antigravity; P =:= kimi -> 300000;
+refresh_schedule_fallback(_) -> 3600000.
+
+query_cooldown_policy(StatusCode, BackoffLevel) ->
+    case whereis(clips_engine) of
+        undefined ->
+            cooldown_policy_fallback(StatusCode, BackoffLevel);
+        _ ->
+            Id = <<"cd_", (integer_to_binary(erlang:unique_integer([positive])))/binary>>,
+            _ = clips_engine:assert({cooldown_query, #{
+                id => Id,
+                status_code => StatusCode,
+                backoff_level => BackoffLevel
+            }}),
+            _ = clips_engine:run(),
+            Result = clips_engine:query(cooldown_result, <<"id">>, Id),
+            _ = clips_engine:retract({cooldown_query, Id}),
+            _ = clips_engine:retract({cooldown_result, Id}),
+            case Result of
+                {ok, #{<<"cooldown-seconds">> := Sec, <<"new-backoff-level">> := Lvl}} ->
+                    {Sec, Lvl};
+                _ ->
+                    cooldown_policy_fallback(StatusCode, BackoffLevel)
+            end
+    end.
+
+cooldown_policy_fallback(S, _) when S >= 200, S < 300 -> {0, 0};
+cooldown_policy_fallback(429, Lvl) -> {min(trunc(math:pow(2, Lvl)), 1800), Lvl + 1};
+cooldown_policy_fallback(S, _) when S =:= 401; S =:= 402; S =:= 403 -> {1800, 0};
+cooldown_policy_fallback(S, Lvl) when S >= 500 -> {min(trunc(math:pow(2, Lvl)), 60), Lvl + 1};
+cooldown_policy_fallback(_, Lvl) -> {0, Lvl}.
 
 backoff_delay(Level, BaseMs) ->
-    min(BaseMs * (1 bsl Level), 300000).  %% Cap at 5 minutes
+    min(BaseMs * (1 bsl Level), 300000).

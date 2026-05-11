@@ -143,28 +143,22 @@ execute_with_retry(SourceFormat, Model, Request, Opts, Stream, Retries, MaxCreds
                     mark_credential_result(AuthId, Model, 200),
                     _ = bind_session(SessionId, AuthId),
                     {ok, stream, StreamPid};
-                {error, Status, _Body} when Status =:= 408;
-                                            Status =:= 500;
-                                            Status =:= 502;
-                                            Status =:= 503;
-                                            Status =:= 504 ->
-                    %% Retriable — mark failure, retry
-                    mark_credential_result(AuthId, Model, Status),
-                    execute_with_retry(SourceFormat, Model, Request, Opts,
-                                       Stream, Retries - 1, MaxCreds, Tried + 1);
-                {error, 429, Body} ->
-                    %% Quota exceeded — try fallback chain
-                    mark_credential_result(AuthId, Model, 429),
-                    model_registry:set_quota_exceeded(AuthId, Model),
-                    case try_quota_fallback(SourceFormat, Model, Request, Opts, Stream) of
-                        {ok, _} = Ok -> Ok;
-                        {ok, stream, _} = Ok -> Ok;
-                        _ -> {error, 429, Body}
-                    end;
                 {error, Status, Body} ->
-                    %% Non-retriable
                     mark_credential_result(AuthId, Model, Status),
-                    {error, Status, Body}
+                    case classify_status(Status) of
+                        #{action := retry} ->
+                            execute_with_retry(SourceFormat, Model, Request, Opts,
+                                               Stream, Retries - 1, MaxCreds, Tried + 1);
+                        #{action := <<"quota-fallback">>} ->
+                            model_registry:set_quota_exceeded(AuthId, Model),
+                            case try_quota_fallback(SourceFormat, Model, Request, Opts, Stream) of
+                                {ok, _} = Ok -> Ok;
+                                {ok, stream, _} = Ok -> Ok;
+                                _ -> {error, Status, Body}
+                            end;
+                        _ ->
+                            {error, Status, Body}
+                    end
             end
     end.
 
@@ -218,6 +212,34 @@ get_provider(CredId) ->
 
 generate_request_id() ->
     <<"req_", (integer_to_binary(erlang:unique_integer([positive])))/binary>>.
+
+classify_status(Status) ->
+    case whereis(clips_engine) of
+        undefined ->
+            classify_status_fallback(Status);
+        _ ->
+            Id = generate_request_id(),
+            _ = clips_engine:assert({status_input, #{
+                id => Id,
+                status_code => Status
+            }}),
+            _ = clips_engine:run(),
+            Result = clips_engine:query(status_output, <<"id">>, Id),
+            _ = clips_engine:retract({status_input, Id}),
+            _ = clips_engine:retract({status_output, Id}),
+            case Result of
+                {ok, Map} -> Map;
+                error -> classify_status_fallback(Status)
+            end
+    end.
+
+classify_status_fallback(Status) when Status =:= 408;
+                                       Status >= 500, Status =< 504 ->
+    #{action => retry};
+classify_status_fallback(429) ->
+    #{action => <<"quota-fallback">>};
+classify_status_fallback(_) ->
+    #{action => pass}.
 
 try_quota_fallback(SourceFormat, Model, Request, Opts, Stream) ->
     %% Chain: switch-preview-model → retry with different cred

@@ -1,0 +1,4 @@
+task_id,issue,title,priority,status,files
+M1,#24,状态码处理规则迁移到 CLIPS,HIGH,done,priv/clips/status_rules.clp + conductor.erl + clips_engine.erl
+M2,#25,Thinking 格式分发迁移到 CLIPS,MEDIUM,skipped,thinking.clp 已有基础规则 + Erlang payload 构建不适合迁移
+M3,#26,凭证冷却策略+刷新调度迁移到 CLIPS,MEDIUM,done,priv/clips/credential_policy.clp + credential_proc.erl + clips_engine.erl

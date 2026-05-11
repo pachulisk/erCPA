@@ -87,7 +87,8 @@ load_rules(#state{port = Port}) ->
     PrivDir = code:priv_dir(cli_proxy),
     ClipsDir = filename:join(PrivDir, "clips"),
     Files = ["templates.clp", "selection.clp", "cooldown.clp",
-             "thinking.clp", "quota.clp", "routing.clp"],
+             "thinking.clp", "quota.clp", "routing.clp",
+             "status_rules.clp", "credential_policy.clp"],
     lists:foreach(fun(File) ->
         Path = filename:join(ClipsDir, File),
         case filelib:is_file(Path) of
@@ -250,8 +251,16 @@ to_clips_template(<<"thinking_input">>) -> <<"thinking-input">>;
 to_clips_template(<<"thinking_output">>) -> <<"thinking-output">>;
 to_clips_template(<<"quota_state">>) -> <<"quota-state">>;
 to_clips_template(<<"config_flag">>) -> <<"config-flag">>;
+to_clips_template(<<"status_input">>) -> <<"status-input">>;
+to_clips_template(<<"status_output">>) -> <<"status-output">>;
+to_clips_template(<<"refresh_schedule">>) -> <<"refresh-schedule">>;
+to_clips_template(<<"cooldown_policy">>) -> <<"cooldown-policy">>;
 to_clips_template(Other) -> Other.
 
+to_clips_slot(<<"cooldown_seconds">>) -> <<"cooldown-seconds">>;
+to_clips_slot(<<"quota_fallback">>) -> <<"quota-fallback">>;
+to_clips_slot(<<"interval_ms">>) -> <<"interval-ms">>;
+to_clips_slot(<<"new_backoff_level">>) -> <<"new-backoff-level">>;
 to_clips_slot(<<"session_id">>) -> <<"session-id">>;
 to_clips_slot(<<"credential_id">>) -> <<"credential-id">>;
 to_clips_slot(<<"request_id">>) -> <<"request-id">>;
