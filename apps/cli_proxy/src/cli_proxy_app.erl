@@ -24,6 +24,10 @@ start(_StartType, _StartArgs) ->
             {"/v1/chat/completions", openai_handler, []},
             {"/v1/models", models_handler, []},
 
+            %% Legacy completions + token counting
+            {"/v1/completions", completions_handler, []},
+            {"/v1/messages/count_tokens", count_tokens_handler, []},
+
             %% Responses API
             {"/v1/responses", responses_handler, []},
             {"/v1/responses/compact", responses_compact_handler, []},
