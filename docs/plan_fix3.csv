@@ -1,0 +1,5 @@
+task_id,issue,title,priority,status,files,description
+F01,#37,Auth Synthesis 自动生成凭证,HIGH,done,auth_synthesizer.erl(new) + cli_proxy_app.erl,从 config API key 列表自动合成 credential_proc
+F02,#38,Bcrypt 密码哈希,HIGH,done,access_control.erl,PBKDF2 哈希存储 + 验证 + 向后兼容明文
+F03,#39,Build Info 版本信息,MEDIUM,done,management_handler.erl,返回 app vsn + OTP + ERTS 版本
+F04,#40,高级请求日志 TTFB 追踪,MEDIUM,done,request_logger.erl,TTFB + credential_id + provider + token 统计

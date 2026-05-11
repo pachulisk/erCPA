@@ -3,7 +3,7 @@
 %% API key + password validation
 %% Used as middleware in HTTP handlers
 
--export([authenticate/1, validate_key/1, is_authenticated/1]).
+-export([authenticate/1, validate_key/1, is_authenticated/1, hash_password/1]).
 
 -define(API_KEYS_TABLE, api_keys_tab).
 
@@ -63,8 +63,7 @@ check_password(Req) ->
             case Provided of
                 <<>> -> {error, password_required};
                 _ ->
-                    %% Constant-time comparison to prevent timing attacks
-                    case constant_time_compare(Provided, Password) of
+                    case verify_password(Provided, Password) of
                         true -> ok;
                         false -> {error, invalid_password}
                     end
@@ -97,6 +96,38 @@ has_configured_keys() ->
         undefined -> false;
         _ -> ets:info(?API_KEYS_TABLE, size) > 0
     end.
+
+%% Password verification — supports both plain and hashed passwords
+%% Hashed format: "$pbkdf2$..." prefix
+verify_password(Provided, <<"$pbkdf2$", _/binary>> = Hashed) ->
+    %% PBKDF2 hashed password
+    verify_pbkdf2(Provided, Hashed);
+verify_password(Provided, Stored) ->
+    %% Plain text — constant-time comparison
+    constant_time_compare(Provided, Stored).
+
+%% Hash a password for storage
+-spec hash_password(binary()) -> binary().
+hash_password(Password) ->
+    Salt = crypto:strong_rand_bytes(16),
+    Iterations = 10000,
+    DK = crypto:pbkdf2_hmac(sha256, Password, Salt, Iterations, 32),
+    SaltB64 = base64:encode(Salt),
+    DKB64 = base64:encode(DK),
+    <<"$pbkdf2$sha256$", (integer_to_binary(Iterations))/binary,
+      "$", SaltB64/binary, "$", DKB64/binary>>.
+
+verify_pbkdf2(Password, <<"$pbkdf2$sha256$", Rest/binary>>) ->
+    case binary:split(Rest, <<"$">>, [global]) of
+        [IterBin, SaltB64, DKB64] ->
+            Iterations = binary_to_integer(IterBin),
+            Salt = base64:decode(SaltB64),
+            StoredDK = base64:decode(DKB64),
+            ComputedDK = crypto:pbkdf2_hmac(sha256, Password, Salt, Iterations, 32),
+            constant_time_compare(ComputedDK, StoredDK);
+        _ -> false
+    end;
+verify_pbkdf2(_, _) -> false.
 
 %% Constant-time binary comparison to prevent timing attacks
 constant_time_compare(A, B) when is_binary(A), is_binary(B) ->

@@ -72,14 +72,26 @@ should_log(_, _) -> true.
 format_entry(#{method := Method, path := Path, status := Status} = Entry) ->
     Ts = maps:get(timestamp, Entry, erlang:system_time(millisecond)),
     Latency = maps:get(latency_ms, Entry, 0),
+    TTFB = maps:get(ttfb_ms, Entry, 0),
     Model = maps:get(model, Entry, <<>>),
+    CredId = maps:get(credential_id, Entry, <<>>),
+    Provider = maps:get(provider, Entry, <<>>),
+    Stream = maps:get(stream, Entry, false),
+    InputTokens = maps:get(input_tokens, Entry, 0),
+    OutputTokens = maps:get(output_tokens, Entry, 0),
     jiffy:encode(#{
         <<"ts">> => Ts,
         <<"method">> => Method,
         <<"path">> => Path,
         <<"status">> => Status,
         <<"latency_ms">> => Latency,
-        <<"model">> => Model
+        <<"ttfb_ms">> => TTFB,
+        <<"model">> => Model,
+        <<"credential_id">> => CredId,
+        <<"provider">> => Provider,
+        <<"stream">> => Stream,
+        <<"input_tokens">> => InputTokens,
+        <<"output_tokens">> => OutputTokens
     });
 format_entry(Entry) ->
     jiffy:encode(Entry).

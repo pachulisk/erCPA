@@ -108,4 +108,6 @@ load_existing_credentials() ->
                     metadata => Meta
                 })
         end
-    end, Creds).
+    end, Creds),
+    %% Synthesize credentials from config API key lists
+    auth_synthesizer:synthesize().

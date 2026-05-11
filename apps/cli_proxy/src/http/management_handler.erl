@@ -449,7 +449,13 @@ handle(<<"PUT">>, <<"ampcode/force-model-mappings">>, Req0, State) ->
 %%====================================================================
 
 handle(<<"GET">>, <<"latest-version">>, Req0, State) ->
-    reply_json(200, #{<<"version">> => <<"0.1.0">>}, Req0, State);
+    Version = case application:get_key(cli_proxy, vsn) of
+        {ok, V} -> list_to_binary(V);
+        _ -> <<"0.1.0">>
+    end,
+    reply_json(200, #{<<"version">> => Version,
+                       <<"otp">> => list_to_binary(erlang:system_info(otp_release)),
+                       <<"erts">> => list_to_binary(erlang:system_info(version))}, Req0, State);
 
 %%====================================================================
 %% Fallback
