@@ -5,7 +5,7 @@
 
 -export([init/2]).
 
--dialyzer({nowarn_function, [reply_error/4]}).
+-dialyzer({nowarn_function, [reply_error/4, error_type_fallback/1]}).
 
 init(Req0, State) ->
     Method = cowboy_req:method(Req0),
@@ -133,13 +133,7 @@ stream_translate_loop(Req, Acc) ->
     end.
 
 reply_error(Req0, Status, Message, State) ->
-    ErrType = case Status of
-        400 -> <<"invalid_request_error">>;
-        401 -> <<"invalid_api_key">>;
-        404 -> <<"model_not_found">>;
-        429 -> <<"rate_limit_exceeded">>;
-        _ -> <<"internal_server_error">>
-    end,
+    ErrType = get_error_type(Status),
     Req = cowboy_req:reply(Status, json_headers(),
         jiffy:encode(#{<<"error">> => #{
             <<"message">> => Message,
@@ -163,3 +157,15 @@ cors_headers() ->
         <<"access-control-allow-methods">> => <<"GET, POST, PUT, PATCH, DELETE, OPTIONS">>,
         <<"access-control-allow-headers">> => <<"*">>
     }.
+
+get_error_type(Status) ->
+    case conductor:classify_status(Status) of
+        #{<<"error-type">> := ET} when ET =/= <<>> -> ET;
+        _ -> error_type_fallback(Status)
+    end.
+
+error_type_fallback(400) -> <<"invalid_request_error">>;
+error_type_fallback(401) -> <<"invalid_api_key">>;
+error_type_fallback(404) -> <<"model_not_found">>;
+error_type_fallback(429) -> <<"rate_limit_exceeded">>;
+error_type_fallback(_) -> <<"internal_server_error">>.

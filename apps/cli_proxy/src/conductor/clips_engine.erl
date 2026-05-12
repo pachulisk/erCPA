@@ -90,7 +90,7 @@ load_rules(#state{port = Port}) ->
              "thinking.clp", "quota.clp", "routing.clp",
              "status_rules.clp", "credential_policy.clp",
              "cloaking_rules.clp", "rewrite_rules.clp",
-             "client_routing.clp"],
+             "client_routing.clp", "provider_config.clp"],
     lists:foreach(fun(File) ->
         Path = filename:join(ClipsDir, File),
         case filelib:is_file(Path) of
@@ -266,6 +266,7 @@ to_clips_template(<<"client_route_query">>) -> <<"client-route-query">>;
 to_clips_template(<<"client_route_result">>) -> <<"client-route-result">>;
 to_clips_template(<<"cooldown_query">>) -> <<"cooldown-query">>;
 to_clips_template(<<"cooldown_result">>) -> <<"cooldown-result">>;
+to_clips_template(<<"provider_info">>) -> <<"provider-info">>;
 to_clips_template(Other) -> Other.
 
 to_clips_slot(<<"cooldown_seconds">>) -> <<"cooldown-seconds">>;
@@ -276,6 +277,11 @@ to_clips_slot(<<"user_agent">>) -> <<"user-agent">>;
 to_clips_slot(<<"should_cloak">>) -> <<"should-cloak">>;
 to_clips_slot(<<"client_key">>) -> <<"client-key">>;
 to_clips_slot(<<"upstream_key">>) -> <<"upstream-key">>;
+to_clips_slot(<<"oauth_module">>) -> <<"oauth-module">>;
+to_clips_slot(<<"auth_flow">>) -> <<"auth-flow">>;
+to_clips_slot(<<"callback_port">>) -> <<"callback-port">>;
+to_clips_slot(<<"error_type">>) -> <<"error-type">>;
+to_clips_slot(<<"should_unpin_auth">>) -> <<"should-unpin-auth">>;
 to_clips_slot(<<"session_id">>) -> <<"session-id">>;
 to_clips_slot(<<"credential_id">>) -> <<"credential-id">>;
 to_clips_slot(<<"request_id">>) -> <<"request-id">>;

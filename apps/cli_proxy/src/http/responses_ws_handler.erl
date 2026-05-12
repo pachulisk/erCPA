@@ -173,13 +173,18 @@ update_tool_caches(ResponseOutput, State) ->
 %%====================================================================
 
 -spec maybe_unpin_auth(integer(), #state{}) -> #state{}.
-maybe_unpin_auth(Status, State) when Status =:= 401;
-                                      Status =:= 402;
-                                      Status =:= 403;
-                                      Status =:= 429 ->
-    State#state{pinned_auth_id = undefined};
-maybe_unpin_auth(_Status, State) ->
-    State.
+maybe_unpin_auth(Status, State) ->
+    case conductor:classify_status(Status) of
+        #{<<"should-unpin-auth">> := <<"yes">>} ->
+            State#state{pinned_auth_id = undefined};
+        _ ->
+            %% Fallback for when CLIPS is unavailable
+            case Status of
+                S when S =:= 401; S =:= 402; S =:= 403; S =:= 429 ->
+                    State#state{pinned_auth_id = undefined};
+                _ -> State
+            end
+    end.
 
 %%====================================================================
 %% Event translation and sequencing

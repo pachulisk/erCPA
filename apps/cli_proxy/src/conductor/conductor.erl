@@ -9,7 +9,8 @@
     execute/3,
     execute/4,
     select_credential/2,
-    select_credential/3
+    select_credential/3,
+    classify_status/1
 ]).
 
 %% gen_server callbacks

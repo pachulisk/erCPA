@@ -273,13 +273,25 @@ poll_device_token(Provider, DeviceCode, Config) ->
     Mod = provider_module(Provider),
     Mod:poll_device_token(DeviceCode, Config).
 
-provider_module(claude) -> oauth_claude;
-provider_module(codex) -> oauth_codex;
-provider_module(codex_device) -> oauth_codex;
-provider_module(gemini) -> oauth_gemini;
-provider_module(kimi) -> oauth_kimi;
-provider_module(antigravity) -> oauth_antigravity;
-provider_module(_) -> oauth_claude.
+provider_module(Provider) ->
+    ProvBin = atom_to_binary(Provider, utf8),
+    case whereis(clips_engine) of
+        undefined -> provider_module_fallback(Provider);
+        _ ->
+            case clips_engine:query(provider_info, <<"provider">>, ProvBin) of
+                {ok, #{<<"oauth-module">> := ModBin}} ->
+                    binary_to_atom(ModBin, utf8);
+                _ -> provider_module_fallback(Provider)
+            end
+    end.
+
+provider_module_fallback(claude) -> oauth_claude;
+provider_module_fallback(codex) -> oauth_codex;
+provider_module_fallback(codex_device) -> oauth_codex;
+provider_module_fallback(gemini) -> oauth_gemini;
+provider_module_fallback(kimi) -> oauth_kimi;
+provider_module_fallback(antigravity) -> oauth_antigravity;
+provider_module_fallback(_) -> oauth_claude.
 
 maybe_open_browser(URL, Config) ->
     case maps:get(no_browser, Config, false) of
