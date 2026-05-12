@@ -4,16 +4,7 @@
 ;;; Hot-reloadable without Erlang code change
 ;;; ============================================================
 
-;;; --- Refresh schedule per provider (milliseconds) ---
-
-(deffacts default-refresh-schedules
-  (refresh-schedule (provider "claude") (interval-ms 14400000))      ; 4 hours
-  (refresh-schedule (provider "codex") (interval-ms 432000000))      ; 5 days
-  (refresh-schedule (provider "antigravity") (interval-ms 300000))   ; 5 minutes
-  (refresh-schedule (provider "kimi") (interval-ms 300000))          ; 5 minutes
-  (refresh-schedule (provider "*") (interval-ms 3600000)))           ; 1 hour default
-
-;;; Templates
+;;; --- Templates (must be defined before deffacts) ---
 
 (deftemplate refresh-schedule
   (slot provider (type STRING))
@@ -36,6 +27,15 @@
   (slot id (type STRING))
   (slot cooldown-seconds (type INTEGER))
   (slot new-backoff-level (type INTEGER)))
+
+;;; --- Default refresh schedules (per provider, milliseconds) ---
+
+(deffacts default-refresh-schedules
+  (refresh-schedule (provider "claude") (interval-ms 14400000))      ; 4 hours
+  (refresh-schedule (provider "codex") (interval-ms 432000000))      ; 5 days
+  (refresh-schedule (provider "antigravity") (interval-ms 300000))   ; 5 minutes
+  (refresh-schedule (provider "kimi") (interval-ms 300000))          ; 5 minutes
+  (refresh-schedule (provider "*") (interval-ms 3600000)))           ; 1 hour default
 
 ;;; --- Cooldown rules ---
 
