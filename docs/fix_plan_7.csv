@@ -1,0 +1,6 @@
+task_id,phase,title,priority,status,files,description
+I01,1,GET /v1/responses WS 升级,HIGH,done,responses_handler.erl,GET 请求委托 responses_ws_handler 处理 WebSocket 升级
+I02,1,GET /backend-api/codex/responses WS,HIGH,done,responses_handler.erl,复用 responses_handler GET 逻辑（同一 handler）
+I03,2,models_handler UA 路由,MEDIUM,done,models_handler.erl,检测 User-Agent claude-cli 前缀返回 Claude 格式模型列表
+I04,3,Codex WS 请求头补全,MEDIUM,done,codex_ws_executor.erl,添加 openai-beta + x-codex-beta-features + x-client-request-id 头
+I05,3,Mac OS session_id,LOW,done,codex_ws_executor.erl,User-Agent 检测 Mac OS 自动生成 session_id header

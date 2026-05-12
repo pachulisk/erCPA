@@ -1,0 +1,26 @@
+task_id,phase,title,priority,status,files,description
+F01,1,kimi-auth-url,HIGH,done,management_handler.erl,添加 GET /v0/management/kimi-auth-url 端点 — 调用 oauth_kimi:request_device_code 返回验证 URL
+F02,1,antigravity-auth-url,HIGH,done,management_handler.erl,添加 GET /v0/management/antigravity-auth-url 端点 — 启动 OAuth session 返回 auth URL
+F03,2,get-auth-status,HIGH,done,management_handler.erl + oauth_session_registry.erl,添加 GET /v0/management/get-auth-status 查询活跃 OAuth 会话状态
+F04,2,quota,HIGH,done,management_handler.erl + credential_proc.erl,添加 GET /v0/management/quota 返回各凭证配额/冷却状态
+F05,2,usage-statistics-enabled,MEDIUM,done,management_handler.erl,添加 GET/PUT /v0/management/usage-statistics-enabled 开关
+F06,2,usage-queue,MEDIUM,done,management_handler.erl + usage_queue.erl,添加 GET /v0/management/usage-queue 返回队列内容
+F07,3,request-error-logs,HIGH,done,management_handler.erl + request_logger.erl,添加 GET /v0/management/request-error-logs 列出错误日志文件
+F08,3,request-error-logs/:name,HIGH,done,management_handler.erl,添加 GET /v0/management/request-error-logs/:name 下载特定日志
+F09,3,request-log-by-id,MEDIUM,done,management_handler.erl + request_logger.erl,添加 GET /v0/management/request-log-by-id/:id 按 ID 查请求日志
+F10,3,DELETE /logs,MEDIUM,done,management_handler.erl,添加 DELETE /v0/management/logs 清除日志文件
+F11,4,auth-files/download,MEDIUM,done,management_handler.erl,添加 GET /v0/management/auth-files/download?id=X 下载凭证原始文件
+F12,4,auth-files/models,MEDIUM,done,management_handler.erl + credential_proc.erl,添加 GET /v0/management/auth-files/models 列出各凭证对应的可用模型
+F13,4,model-definitions/:channel,LOW,done,management_handler.erl + model_registry.erl,添加 GET /v0/management/model-definitions/:channel 按通道返回静态模型定义
+F14,4,oauth-excluded-models,MEDIUM,done,management_handler.erl,添加 GET/PUT /v0/management/oauth-excluded-models 管理 OAuth 排除模型列表
+F15,4,oauth-model-alias,MEDIUM,done,management_handler.erl,添加 GET/PUT /v0/management/oauth-model-alias 管理 OAuth 模型别名
+F16,5,api-call,HIGH,done,management_handler.erl + conductor.erl,添加 POST /v0/management/api-call 使用指定凭据执行测试请求
+F17,6,ampcode/upstream-api-key,LOW,done,management_handler.erl,添加 GET/PUT/DELETE ampcode/upstream-api-key 单 key 管理
+F18,6,ampcode/restrict-management-to-localhost,LOW,done,management_handler.erl + amp_config.erl,添加 GET/PUT ampcode/restrict-management-to-localhost
+F19,7,Root / endpoint,LOW,done,cli_proxy_app.erl + root_handler.erl(new),添加 GET / 返回可用 API 端点列表
+F20,7,/v1/messages,HIGH,done,cli_proxy_app.erl + messages_handler.erl(new),添加 POST /v1/messages Claude Messages API 原生格式转发
+F21,7,/v1beta/models,MEDIUM,done,cli_proxy_app.erl + gemini_native_handler.erl(new),添加 GET /v1beta/models Gemini 原生模型列表
+F22,7,/v1beta/models/*action,MEDIUM,done,gemini_native_handler.erl,添加 POST /v1beta/models/:model:generateContent 等 Gemini 原生 action
+F23,8,Session Affinity 多 Key,MEDIUM,done,conductor.erl + openai_handler.erl,支持从 X-Session-ID / X-Client-Request-Id / metadata.user_id / conversation_id 提取 session key
+F24,9,disable-cooling 配置,LOW,done,conductor.erl,添加 disable_cooling 配置项跳过冷却调度
+F25,9,remote-management 细粒度,LOW,done,management_handler.erl,添加 allow_remote / disable_control_panel 管理配置 + mgmt_auth 支持 allow_remote

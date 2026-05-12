@@ -92,8 +92,9 @@ init([]) ->
         type => worker,
         modules => [Mod]
     } || Mod <- [claude_executor, openai_compat_executor, gemini_executor,
-                 codex_executor, vertex_executor, aistudio_executor,
-                 antigravity_executor, kimi_executor]],
+                 gemini_cli_executor, codex_executor, codex_ws_executor,
+                 vertex_executor, aistudio_executor, antigravity_executor,
+                 kimi_executor]],
 
     ConfigWatcher = #{
         id => config_watcher,
@@ -131,6 +132,15 @@ init([]) ->
         modules => [request_logger]
     },
 
+    ManagementPanel = #{
+        id => management_panel,
+        start => {management_panel, start_link, []},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [management_panel]
+    },
+
     ChildSpecs = [
         ConfigLoader,
         SignatureCache,
@@ -143,7 +153,8 @@ init([]) ->
     ] ++ Executors ++ [
         CredentialSup,
         Conductor,
-        ConfigWatcher
+        ConfigWatcher,
+        ManagementPanel
     ],
 
     {ok, {SupFlags, ChildSpecs}}.

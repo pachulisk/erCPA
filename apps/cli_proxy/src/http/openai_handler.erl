@@ -66,8 +66,14 @@ handle_authenticated(Req0, State) ->
             reply_error(Req1, 400, <<"Invalid JSON body">>, State)
     end.
 
+session_opts(Req) ->
+    SessionId = cowboy_req:header(<<"x-session-id">>, Req, <<>>),
+    ClientReqId = cowboy_req:header(<<"x-client-request-id">>, Req, <<>>),
+    #{headers => #{<<"x-session-id">> => SessionId,
+                   <<"x-client-request-id">> => ClientReqId}}.
+
 handle_nonstream(Model, Request, Req0, State) ->
-    case conductor:execute(openai, Model, Request) of
+    case conductor:execute(openai, Model, Request, session_opts(Req0)) of
         {ok, Response} ->
             Req = cowboy_req:reply(200, json_headers(),
                 jiffy:encode(Response), Req0),
@@ -82,7 +88,7 @@ handle_nonstream(Model, Request, Req0, State) ->
 
 handle_stream(Model, Request, Req0, State) ->
     %% For streaming, we start SSE response then forward chunks
-    case conductor:execute(openai, Model, Request#{<<"stream">> => true}) of
+    case conductor:execute(openai, Model, Request#{<<"stream">> => true}, session_opts(Req0)) of
         {ok, Response} ->
             %% Got a non-stream response despite asking for stream
             %% Wrap it in SSE format

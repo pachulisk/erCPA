@@ -116,7 +116,7 @@ execute_with_retry(_SF, _Model, _Req, _Opts, _Stream, _Retries, MaxCreds, Tried)
   when MaxCreds > 0, Tried >= MaxCreds ->
     {error, 503, <<"max credentials exceeded">>};
 execute_with_retry(SourceFormat, Model, Request, Opts, Stream, Retries, MaxCreds, Tried) ->
-    SessionId = maps:get(session_id, Opts, <<>>),
+    SessionId = extract_session_id(Opts, Request),
     case select_credential(Model, Opts, SessionId) of
         {error, no_credential_available} ->
             {error, 503, <<"no credential available">>};
@@ -172,22 +172,44 @@ do_execute(Provider, AuthId, Request, Stream, Opts) ->
         {error, not_found} ->
             {error, 503, <<"credential not found">>};
         {ok, Auth} ->
+            Auth1 = inject_header_defaults(Provider, Auth),
             Mod = executor_module(Provider),
             case Stream of
                 true ->
-                    case Mod:execute_stream(AuthId, Auth, Request, Opts) of
+                    case Mod:execute_stream(AuthId, Auth1, Request, Opts) of
                         {ok, Pid} -> {ok, stream, Pid};
                         {error, S, B} -> {error, S, B}
                     end;
                 false ->
-                    Mod:execute(AuthId, Auth, Request, Opts)
+                    Mod:execute(AuthId, Auth1, Request, Opts)
+            end
+    end.
+
+inject_header_defaults(Provider, Auth) ->
+    Key = case Provider of
+        claude -> claude_header_defaults;
+        codex -> codex_header_defaults;
+        _ -> undefined
+    end,
+    case Key of
+        undefined -> Auth;
+        _ ->
+            case config_loader:get(Key, #{}) of
+                Defaults when is_map(Defaults), map_size(Defaults) > 0 ->
+                    Existing = maps:get(<<"custom_headers">>, Auth, #{}),
+                    %% Defaults only fill in missing headers
+                    Merged = maps:merge(Defaults, Existing),
+                    Auth#{<<"custom_headers">> => Merged};
+                _ -> Auth
             end
     end.
 
 executor_module(claude) -> claude_executor;
 executor_module(openai_compat) -> openai_compat_executor;
 executor_module(gemini) -> gemini_executor;
+executor_module(gemini_cli) -> gemini_cli_executor;
 executor_module(codex) -> codex_executor;
+executor_module(codex_ws) -> codex_ws_executor;
 executor_module(vertex) -> vertex_executor;
 executor_module(aistudio) -> aistudio_executor;
 executor_module(antigravity) -> antigravity_executor;
@@ -199,9 +221,13 @@ executor_module(_) -> openai_compat_executor.
 %%====================================================================
 
 mark_credential_result(AuthId, Model, StatusCode) ->
-    case whereis(binary_to_atom(<<"cred_", AuthId/binary>>, utf8)) of
-        undefined -> ok;
-        _Pid -> credential_proc:mark_result(AuthId, Model, StatusCode)
+    case config_loader:get(disable_cooling, false) of
+        true -> ok;
+        false ->
+            case whereis(binary_to_atom(<<"cred_", AuthId/binary>>, utf8)) of
+                undefined -> ok;
+                _Pid -> credential_proc:mark_result(AuthId, Model, StatusCode)
+            end
     end.
 
 get_provider(CredId) ->
@@ -243,7 +269,7 @@ classify_status_fallback(_) ->
     #{action => pass}.
 
 try_quota_fallback(SourceFormat, Model, Request, Opts, Stream) ->
-    %% Chain: switch-preview-model → retry with different cred
+    %% Chain: switch-preview-model → antigravity-credits → give up
     case config_loader:get(quota_switch_preview_model, false) of
         true ->
             PreviewModel = to_preview_model(Model),
@@ -253,9 +279,23 @@ try_quota_fallback(SourceFormat, Model, Request, Opts, Stream) ->
                     execute_with_retry(SourceFormat, PreviewModel,
                         Request#{<<"model">> => PreviewModel}, Opts,
                         Stream, MaxRetries, 0, 0);
-                false -> {error, 429, <<"quota exceeded">>}
+                false ->
+                    try_credits_fallback(SourceFormat, Model, Request, Opts, Stream)
             end;
-        false -> {error, 429, <<"quota exceeded">>}
+        false ->
+            try_credits_fallback(SourceFormat, Model, Request, Opts, Stream)
+    end.
+
+try_credits_fallback(SourceFormat, Model, Request, Opts, Stream) ->
+    case config_loader:get(quota_antigravity_credits, false) of
+        true ->
+            %% Force routing to antigravity provider with credits
+            MaxRetries = config_loader:get(request_retry, 3),
+            CreditsOpts = Opts#{force_provider => antigravity, use_credits => true},
+            execute_with_retry(SourceFormat, Model, Request, CreditsOpts,
+                               Stream, MaxRetries, 0, 0);
+        false ->
+            {error, 429, <<"quota exceeded">>}
     end.
 
 to_preview_model(Model) ->
@@ -265,8 +305,46 @@ to_preview_model(Model) ->
         _ -> Model
     end.
 
+%% Extract session ID from multiple sources (priority order)
+extract_session_id(Opts, Request) ->
+    case maps:get(session_id, Opts, <<>>) of
+        <<>> -> extract_session_from_request(Opts, Request);
+        Id -> Id
+    end.
+
+extract_session_from_request(Opts, Request) ->
+    %% Try headers first, then request body fields
+    Headers = maps:get(headers, Opts, #{}),
+    Candidates = [
+        maps:get(<<"x-session-id">>, Headers, <<>>),
+        maps:get(<<"x-client-request-id">>, Headers, <<>>),
+        deep_get([<<"metadata">>, <<"user_id">>], Request, <<>>),
+        maps:get(<<"conversation_id">>, Request, <<>>)
+    ],
+    first_nonempty(Candidates).
+
+first_nonempty([]) -> <<>>;
+first_nonempty([<<>> | Rest]) -> first_nonempty(Rest);
+first_nonempty([undefined | Rest]) -> first_nonempty(Rest);
+first_nonempty([V | _]) when is_binary(V) -> V;
+first_nonempty([_ | Rest]) -> first_nonempty(Rest).
+
+deep_get([], Val, _Default) -> Val;
+deep_get([Key | Rest], Map, Default) when is_map(Map) ->
+    case maps:get(Key, Map, undefined) of
+        undefined -> Default;
+        Val -> deep_get(Rest, Val, Default)
+    end;
+deep_get(_, _, Default) -> Default.
+
 bind_session(<<>>, _AuthId) -> ok;
 bind_session(SessionId, AuthId) ->
+    case config_loader:get(session_affinity_enabled, true) of
+        false -> ok;
+        true -> do_bind_session(SessionId, AuthId)
+    end.
+
+do_bind_session(SessionId, AuthId) ->
     case whereis(clips_engine) of
         undefined -> ok;
         _ ->

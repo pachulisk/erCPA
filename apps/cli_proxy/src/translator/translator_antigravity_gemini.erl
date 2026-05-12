@@ -1,0 +1,26 @@
+-module(translator_antigravity_gemini).
+-behaviour(translator).
+
+%% Antigravity -> Gemini
+%% Antigravity is Claude-compatible; delegates to translator_claude_gemini.
+
+-export([request/3, response_stream/2, response_nonstream/1, init_acc/0]).
+-export([register/0]).
+
+-dialyzer({nowarn_function, [request/3, response_stream/2]}).
+
+register() ->
+    translator_registry:register(antigravity, gemini, ?MODULE).
+
+request(Model, Body, Stream) ->
+    translator_claude_gemini:request(Model, Body, Stream).
+
+init_acc() ->
+    translator_claude_gemini:init_acc().
+
+response_stream(Event, Acc) ->
+    translator_claude_gemini:response_stream(Event, Acc).
+
+-spec response_nonstream(map()) -> map().
+response_nonstream(Body) ->
+    translator_claude_gemini:response_nonstream(Body).

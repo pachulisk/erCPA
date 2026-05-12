@@ -1,0 +1,25 @@
+task_id,phase,title,priority,status,files,description
+G01,1,provider-key CRUD,HIGH,done,management_handler.erl,claude/codex/gemini/vertex/openai-compat 添加 PUT/PATCH/DELETE (共15个 handle 子句)
+G02,1,config PATCH 批量,MEDIUM,done,management_handler.erl,debug+logging-to-file+request-log+request-retry+max-retry-interval+routing/strategy+force-model-prefix+proxy-url+ws-auth+quota 等 14 个端点添加 PATCH
+G03,1,list DELETE 补全,MEDIUM,done,management_handler.erl,api-keys+oauth-excluded-models+oauth-model-alias 添加 DELETE
+G04,1,ampcode PATCH/DELETE,LOW,done,management_handler.erl,upstream-url+upstream-api-key+upstream-api-keys+model-mappings+force-model-mappings+restrict-mgmt PATCH/DELETE
+G05,2,GET /logs,MEDIUM,done,management_handler.erl,添加 GET /v0/management/logs 返回通用日志文件列表
+G06,2,GET /ampcode,LOW,done,management_handler.erl,添加 GET /v0/management/ampcode 返回完整 Amp 配置对象
+G07,2,POST /oauth-callback,LOW,done,management_handler.erl,添加 POST /v0/management/oauth-callback 处理管理 API OAuth 回调
+G08,3,antigravity-credits 降级,HIGH,done,conductor.erl,添加 quota_antigravity_credits 配置 + try_credits_fallback 降级链
+G09,3,header-defaults,MEDIUM,done,conductor.erl,添加 claude_header_defaults/codex_header_defaults 配置 + inject_header_defaults
+G10,3,signature-bypass-strict,LOW,done,signature_cache.erl,添加 antigravity_signature_bypass_strict 配置 + is_bypass_strict/0 API
+G11,3,payload raw 规则,MEDIUM,done,payload_rules.erl,已有 default_raw/override_raw 支持（确认已实现）
+G12,4,keep-alive 端点,LOW,done,cli_proxy_app.erl + keepalive_handler.erl(new),添加 GET /keepalive 心跳端点
+G13,5,translator_codex_gemini,HIGH,done,translator_codex_gemini.erl(new),Codex Responses API → Gemini generateContent 格式翻译
+G14,5,translator_gemini_codex,HIGH,done,translator_gemini_codex.erl(new),Gemini → Codex Responses API 格式翻译
+G15,6,translator_antigravity_claude,HIGH,done,translator_antigravity_claude.erl(new),Antigravity → Claude Messages API 格式翻译（passthrough）
+G16,6,translator_claude_antigravity,HIGH,done,translator_claude_antigravity.erl(new),Claude → Antigravity 格式翻译（passthrough）
+G17,6,translator_antigravity_openai,MEDIUM,done,translator_antigravity_openai.erl(new),Antigravity → OpenAI chat-completions（委托 claude_openai）
+G18,6,translator_openai_antigravity,MEDIUM,done,translator_openai_antigravity.erl(new),OpenAI → Antigravity（委托 openai_claude）
+G19,7,gemini_cli_executor,HIGH,done,gemini_cli_executor.erl(new) + cli_proxy_sup.erl,Gemini CLI 内部协议执行器
+G20,7,/v1internal:method 路由,HIGH,done,cli_proxy_app.erl + gemini_cli_handler.erl(new),添加 POST /v1internal/[...] 路由和 handler
+G21,7,translator_gemini_cli_claude,MEDIUM,done,translator_gemini_cli_claude.erl(new),Gemini CLI → Claude 翻译（委托 gemini_claude）
+G22,7,translator_claude_gemini_cli,MEDIUM,done,translator_claude_gemini_cli.erl(new),Claude → Gemini CLI 翻译（委托 claude_gemini）
+G23,7,translator_gemini_cli_openai,MEDIUM,done,translator_gemini_cli_openai.erl(new),Gemini CLI → OpenAI 翻译（委托 gemini_openai）
+G24,7,translator_openai_gemini_cli,MEDIUM,done,translator_openai_gemini_cli.erl(new),OpenAI → Gemini CLI 翻译（委托 openai_gemini）

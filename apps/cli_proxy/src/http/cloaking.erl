@@ -7,6 +7,13 @@
 
 -spec maybe_cloak(cowboy_req:req(), map()) -> {boolean(), map()}.
 maybe_cloak(Req, Request) ->
+    %% Skip cloaking entirely in commercial mode
+    case config_loader:get(commercial_mode, false) of
+        true -> {false, Request};
+        false -> do_maybe_cloak(Req, Request)
+    end.
+
+do_maybe_cloak(Req, Request) ->
     UA = cowboy_req:header(<<"user-agent">>, Req, <<>>),
     Mode = config_loader:get(cloak_mode, <<"auto">>),
     ShouldCloak = should_cloak(UA, Mode),

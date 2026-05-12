@@ -47,12 +47,17 @@ handle_call(_, _From, State) ->
     {reply, ok, State}.
 
 handle_cast({log, Entry}, #state{enabled = true, fd = Fd} = State) when Fd =/= undefined ->
-    _ = case should_log(Entry, State#state.error_only) of
-        true ->
-            Line = format_entry(Entry),
-            file:write(Fd, [Line, <<"\n">>]);
+    %% Skip logging in commercial mode
+    _ = case config_loader:get(commercial_mode, false) of
+        true -> ok;
         false ->
-            ok
+            case should_log(Entry, State#state.error_only) of
+                true ->
+                    Line = format_entry(Entry),
+                    file:write(Fd, [Line, <<"\n">>]);
+                false ->
+                    ok
+            end
     end,
     {noreply, State};
 handle_cast({log, _Entry}, State) ->

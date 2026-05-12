@@ -1,12 +1,16 @@
 -module(responses_handler).
 
-%% Cowboy handler for POST /v1/responses (HTTP, non-WebSocket)
-%% Supports both streaming (SSE) and non-streaming modes
+%% Cowboy handler for /v1/responses and /backend-api/codex/responses
+%% POST: HTTP streaming (SSE) and non-streaming
+%% GET:  WebSocket upgrade — delegates to responses_ws_handler
 
 -export([init/2]).
 
 init(Req0, State) ->
     case cowboy_req:method(Req0) of
+        <<"GET">> ->
+            %% WebSocket upgrade — delegate to responses_ws_handler
+            responses_ws_handler:init(Req0, State);
         <<"POST">> -> handle_post(Req0, State);
         <<"OPTIONS">> ->
             Req = cowboy_req:reply(204, cors_headers(), Req0),

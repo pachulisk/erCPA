@@ -9,7 +9,8 @@
     cache/3,
     get/2,
     clear/0,
-    clear/1
+    clear/1,
+    is_bypass_strict/0
 ]).
 
 %% gen_server callbacks
@@ -41,6 +42,14 @@ cache(ModelName, ThinkingText, Signature) ->
 
 -spec get(binary(), binary()) -> {ok, binary()} | miss.
 get(ModelName, ThinkingText) ->
+    Enabled = try config_loader:get(antigravity_signature_cache_enabled, true)
+              catch _:_ -> true end,
+    case Enabled of
+        false -> miss;
+        true -> do_get(ModelName, ThinkingText)
+    end.
+
+do_get(ModelName, ThinkingText) ->
     Group = model_group(ModelName),
     Hash = text_hash(ThinkingText),
     case ets:lookup(?TABLE, {Group, Hash}) of
@@ -58,6 +67,10 @@ get(ModelName, ThinkingText) ->
         [] ->
             miss
     end.
+
+-spec is_bypass_strict() -> boolean().
+is_bypass_strict() ->
+    config_loader:get(antigravity_signature_bypass_strict, false) =:= true.
 
 -spec clear() -> ok.
 clear() ->

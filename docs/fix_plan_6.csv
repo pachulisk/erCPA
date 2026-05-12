@@ -1,0 +1,24 @@
+task_id,phase,title,priority,status,files,description
+H01,1,HEAD /healthz,LOW,done,health_handler.erl,health_handler 支持 HEAD 方法（返回 200 空 body）
+H02,1,PATCH /api-keys,LOW,done,management_handler.erl,添加 PATCH /v0/management/api-keys 部分更新
+H03,1,config.yaml,MEDIUM,done,management_handler.erl,添加 GET/PUT/PATCH /v0/management/config.yaml + json_to_yaml 序列化
+H04,1,commercial-mode,LOW,done,request_logger.erl + cloaking.erl,添加 commercial_mode 配置项跳过 cloaking/logging
+H05,1,auth-auto-refresh-workers,LOW,done,config_loader.erl,添加 auth_auto_refresh_workers 配置键（Erlang 进程模型天然支持并发）
+H06,1,panel 配置扩展,LOW,done,management_panel.erl,添加 disable_auto_update_panel + panel_github_repository 配置
+H07,1,session-affinity 开关,LOW,done,conductor.erl + management_handler.erl,添加 session_affinity_enabled 配置独立于 TTL
+H08,2,claude→codex,MEDIUM,done,translator_claude_codex.erl(new),Claude Messages → Codex Responses API 完整翻译
+H09,2,openai→codex,MEDIUM,done,translator_openai_codex.erl(new),OpenAI chat-completions → Codex Responses API 完整翻译
+H10,2,antigravity→gemini,MEDIUM,done,translator_antigravity_gemini.erl(new),委托 translator_claude_gemini
+H11,2,gemini→antigravity,MEDIUM,done,translator_gemini_antigravity.erl(new),委托 translator_gemini_claude
+H12,2,codex→antigravity,LOW,done,translator_codex_antigravity.erl(new),委托 translator_codex_claude
+H13,2,codex→gemini_cli,LOW,done,translator_codex_gemini_cli.erl(new),委托 translator_codex_gemini
+H14,2,antigravity→codex,LOW,done,translator_antigravity_codex.erl(new),委托 translator_claude_codex
+H15,2,antigravity→gemini_cli,LOW,done,translator_antigravity_gemini_cli.erl(new),委托 translator_claude_gemini_cli
+H16,2,gemini_cli→gemini,LOW,done,translator_gemini_cli_gemini.erl(new),passthrough（格式相同）
+H17,2,gemini_cli→codex,LOW,done,translator_gemini_cli_codex.erl(new),委托 translator_gemini_codex
+H18,2,gemini_cli→antigravity,LOW,done,translator_gemini_cli_antigravity.erl(new),委托 translator_gemini_cli_claude
+H19,3,codex_ws_executor,HIGH,done,codex_ws_executor.erl(new),Codex WebSocket 执行器 — gun WS 连接 + codex_executor HTTP 降级
+H20,3,conductor codex_ws 集成,HIGH,done,conductor.erl + cli_proxy_sup.erl,codex_ws executor module 映射 + supervisor 注册
+H21,4,AMP Provider 路由,MEDIUM,done,cli_proxy_app.erl + amp_provider_handler.erl(new),/api/provider/:provider/v1/* 动态路由 + conductor 本地执行
+H22,4,AMP 管理代理,LOW,done,amp_routes_handler.erl(new),/api/* 代理到上游 ampcode
+H23,4,AMP 根路由,LOW,done,cli_proxy_app.erl + amp_routes_handler.erl,/threads /docs /settings /auth RSS feeds 代理
