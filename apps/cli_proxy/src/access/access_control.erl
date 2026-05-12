@@ -107,7 +107,6 @@ verify_password(Provided, Stored) ->
     constant_time_compare(Provided, Stored).
 
 %% Hash a password for storage
--spec hash_password(binary()) -> binary().
 hash_password(Password) ->
     Salt = crypto:strong_rand_bytes(16),
     Iterations = 10000,

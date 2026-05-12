@@ -25,7 +25,6 @@ obfuscate_sensitive_words(Text) ->
         obfuscate_word(Acc, Word)
     end, Text, Words).
 
--spec generate_fake_user_id() -> binary().
 generate_fake_user_id() ->
     HexPart = hex(crypto:strong_rand_bytes(32)),
     UUID1 = uuid(),

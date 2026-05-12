@@ -7,6 +7,7 @@
     start_link/0,
     is_enabled/0,
     get_upstream_url/0,
+    get_upstream_api_key/0,
     get_model_mappings/0,
     force_model_mappings/0,
     resolve_upstream_key/1
@@ -35,6 +36,9 @@ is_enabled() ->
 get_upstream_url() ->
     gen_server:call(?MODULE, get_upstream_url).
 
+get_upstream_api_key() ->
+    gen_server:call(?MODULE, get_upstream_api_key).
+
 get_model_mappings() ->
     gen_server:call(?MODULE, get_model_mappings).
 
@@ -52,6 +56,8 @@ handle_call(is_enabled, _From, #state{enabled = E} = State) ->
     {reply, E, State};
 handle_call(get_upstream_url, _From, #state{upstream_url = U} = State) ->
     {reply, U, State};
+handle_call(get_upstream_api_key, _From, #state{upstream_api_key = K} = State) ->
+    {reply, case K of undefined -> <<>>; _ -> K end, State};
 handle_call(get_model_mappings, _From, #state{model_mappings = M} = State) ->
     {reply, M, State};
 handle_call(force_model_mappings, _From, #state{force_mappings = F} = State) ->

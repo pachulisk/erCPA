@@ -8,7 +8,6 @@
 -define(DEFAULT_BUILTINS, [<<"web_search">>, <<"code_execution">>,
                             <<"text_editor">>, <<"computer">>]).
 
--spec default_tools() -> [binary()].
 default_tools() -> ?DEFAULT_BUILTINS.
 
 %% Augment the builtin registry from request body tools array
